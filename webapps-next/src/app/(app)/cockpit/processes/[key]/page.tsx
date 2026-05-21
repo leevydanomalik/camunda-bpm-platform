@@ -90,6 +90,19 @@ function buildBadges(stats: ActivityStatistic[]): ActivityBadge[] {
   return badges;
 }
 
+function buildHeatmap(stats: ActivityStatistic[]): Record<string, number> | undefined {
+  // Weight each activity by its share of the busiest activity. Busiest = 1.0,
+  // others scale down linearly. Activities with zero instances are omitted
+  // so the LUT only spans activities that actually have heat.
+  const max = stats.reduce((m, s) => Math.max(m, s.instances), 0);
+  if (max === 0) return undefined;
+  const heatmap: Record<string, number> = {};
+  for (const s of stats) {
+    if (s.instances > 0) heatmap[s.id] = s.instances / max;
+  }
+  return heatmap;
+}
+
 export default async function ProcessDefinitionPage({ params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
   const def = await loadDefinition(key);
@@ -117,6 +130,7 @@ export default async function ProcessDefinitionPage({ params }: { params: Promis
     loadActivityStatistics(def.id),
   ]);
   const badges = buildBadges(stats);
+  const heatmap = buildHeatmap(stats);
   const totalIncidents = stats.reduce(
     (sum, s) => sum + (s.incidents?.reduce((a, b) => a + b.incidentCount, 0) ?? 0),
     0,
@@ -151,11 +165,11 @@ export default async function ProcessDefinitionPage({ params }: { params: Promis
           <CardHeader>
             <CardTitle>Diagram</CardTitle>
             <CardDescription>
-              Instance counts shown bottom-left in primary; incident counts top-right in destructive.
+              Instance counts bottom-left · incident counts top-right · heatmap overlay weighted by per-activity instance share.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <BpmnViewer xml={xml} height={420} badges={badges} />
+            <BpmnViewer xml={xml} height={460} badges={badges} heatmap={heatmap} />
           </CardContent>
         </Card>
       ) : null}
