@@ -31,14 +31,14 @@ Phase content is *what gets shipped and how completion is measured*. Implementat
 | L7 | Polling for live data; no SSE/WebSocket | TanStack Query handles intervals + dedup. |
 | L8 | `next-intl` for i18n | Migration script converts legacy `locales/{en,de}.json` to flat-key format. |
 
-### Open questions (must resolve before affected phase starts)
+### Resolved questions
 
-| ID | Question | Affects |
-|---|---|---|
-| Q1 | Multi-engine support? Legacy has an engine selector. | All apps, proxy config, sidebar |
-| Q2 | License key install UI? | Phase 3 (Admin) |
-| Q3 | Setup wizard (first-run install)? | Phase 3 (Admin) |
-| Q4 | Known third-party plugins to preserve compatibility for? | §3.3 plugin contract |
+| ID | Question | Resolution | Affects |
+|---|---|---|---|
+| Q1 | Multi-engine support? | **Keep.** Phase 0 adds engine context provider, engine path prefix in proxy, sidebar engine selector. See §3.9. | All apps, proxy config, sidebar |
+| Q2 | License key install UI? | **🚫 Drop.** Community is EOL upstream; no license to install. Telemetry settings + diagnostics info (server info, license-state *display*) stay. | Phase 3 (Admin) |
+| Q3 | Setup wizard (first-run install)? | **Keep.** Strict parity bar. Single form posting to `/api/admin/setup/{engine}/user/create`. | Phase 3 (Admin) |
+| Q4 | Known third-party plugins to preserve compatibility for? | **None known.** Plugin contract (§3.3) + slot catalog (§5) are the public surface; third parties port via the documented spec. | §3.3 plugin contract |
 
 ---
 
@@ -225,6 +225,22 @@ Locale switching uses next-intl's middleware integration with our existing `src/
 
 **Known limit.** Documented in §8 Risks. SSE is a candidate post-cutover follow-up but is *not* a phase gate; cutover happens with polling.
 
+### 3.9 Multi-engine (Q1 resolution)
+
+**Decision.** Multi-engine support is preserved — webapps-next can target any engine known to the Camunda Run distro, with a sidebar selector.
+
+**Engine list source.** `GET /api/engine/engine/` (engine-rest, no path prefix) returns the array `[{name: "default"}, ...]`. Cached at the layout level.
+
+**Path prefix convention.** All engine-rest URLs become engine-scoped:
+- One-engine paths: `/engine-rest/<resource>` → `/engine-rest/engine/{engineName}/<resource>`.
+- Proxy: `/api/engine/<resource>` rewrites stay, AND `/api/engine/engine/{name}/<resource>` is added for explicit engine scoping.
+
+**Code-side.** `engineGet<T>(path, opts?: {engine?: string})` is extended; when `engine` is omitted, the current engine from a server-side cookie claim is used. Cookie session (§3.1) grows an `engine: string` claim alongside `username` + `groups[]`.
+
+**UI surface.** Sidebar gains an engine selector dropdown (last item, below nav links). Selecting an engine updates the cookie + reloads — no client-side engine state.
+
+**Out of scope for this ADR.** Per-engine deployment of apps (i.e. some apps disabled for some engines) — current legacy behavior treats all apps as available for all engines; we match that.
+
 ### 3.8 Testing
 
 **Playwright at `webapps-next/e2e/`** against a real distro launched by DevOps. Spec naming convention: `<feature>.spec.ts`, tagged via Playwright's `test.describe` titles with `@phase-N` so phase exit criteria can run scoped subsets (`npx playwright test --grep @phase-2`).
@@ -287,7 +303,7 @@ Source dirs: `webapps/frontend/ui/tasklist/client/scripts/{tasklist,task,filter,
 | Tasklist card plugin | `plugins/tasklistCard/` | — | ⬜ | plugin slot `tasklist.card` | 2 |
 | Standalone task creation | `plugins/standaloneTask/` | — | ⬜ | plugin slot `tasklist.navbar.action` | 2 |
 | Keyboard shortcuts | `shortcuts/` | — | ⬜ | not yet ported; consider whether 🚫 dropped | 2 |
-| Navigation (multi-process-engine selector) | `navigation/` | — | ⬜ | gated on Q1 (multi-engine?) | 2 |
+| Navigation (multi-process-engine selector) | `navigation/` | — | ⬜ | per Q1: shipped via the cross-app sidebar selector (Phase 0); per-Tasklist navigation contributions land here in Phase 2 | 2 |
 
 ### 4.3 Admin (Phase 3)
 
@@ -303,18 +319,18 @@ Source dir: `webapps/frontend/ui/admin/client/scripts/pages/` (21 page files).
 | Group create | `groupCreate.js` | — | ⬜ | not yet ported | 3 |
 | Group edit | `groupEdit.js` | — | ⬜ | not yet ported | 3 |
 | Group membership management | `groupMembershipsCreate.js` | — | ⬜ | not yet ported | 3 |
-| Tenants list | `tenants.js` | — | ⬜ | gated on Q1 (multi-tenant) | 3 |
-| Tenant create | `tenantCreate.js` | — | ⬜ | gated on Q1 | 3 |
-| Tenant edit | `tenantEdit.js` | — | ⬜ | gated on Q1 | 3 |
-| Tenant memberships create | `tenantMembershipsCreate.js` | — | ⬜ | gated on Q1 | 3 |
+| Tenants list | `tenants.js` | — | ⬜ | not yet ported (tenants are an identity-service feature; orthogonal to multi-engine Q1) | 3 |
+| Tenant create | `tenantCreate.js` | — | ⬜ | not yet ported | 3 |
+| Tenant edit | `tenantEdit.js` | — | ⬜ | not yet ported | 3 |
+| Tenant memberships create | `tenantMembershipsCreate.js` | — | ⬜ | not yet ported | 3 |
 | Authorizations list | `authorizations.js` | `src/app/(app)/admin/authorizations/page.tsx` | ✅ | — | 3 |
 | Authorization create | `authorizationCreate.js` | — | ⬜ | not yet ported | 3 |
 | Authorization delete confirm | `authorizationDeleteConfirm.js` | — | ⬜ | not yet ported | 3 |
 | System info | `system.js` | — | ⬜ | not yet ported | 3 |
-| System settings — general | `systemSettingsGeneral.js` | — | ⬜ | not yet ported; gated on Q2 (license) | 3 |
-| Diagnostics | `diagnostics.js` | — | ⬜ | gated on Q2 (license + telemetry UI) | 3 |
+| System settings — general (telemetry + display settings) | `systemSettingsGeneral.js` | — | ⬜ | not yet ported; license-install controls dropped per Q2 — telemetry + display settings remain | 3 |
+| Diagnostics (server info, license state display, telemetry) | `diagnostics.js` | — | ⬜ | per Q2: license *install* UI dropped; license *state display* + telemetry + server info kept | 3 |
 | Execution metrics | `execution-metrics.js` | — | ⬜ | reads `/api/admin/plugin/adminPlugins/metrics/aggregated` | 3 |
-| Setup wizard (first-run install) | `setup.js` | — | ⬜ → 🚫? | gated on Q3 — recommended 🚫 dropped (modern distros pre-seed demo user) | 3 |
+| Setup wizard (first-run install) | `setup.js` | — | ⬜ | per Q3: kept; single form posting `/api/admin/setup/{engine}/user/create` | 3 |
 | Main / app shell | `main.js` | `src/app/(app)/admin/layout.tsx` (implicit via app shell) | ✅ | — | 3 |
 | Admin base plugin | `webapps/frontend/ui/admin/plugins/base/` | — | ⬜ | depends on plugin contract impl; slot ids `admin.dashboard.section`, `admin.system` | 3 |
 
@@ -353,7 +369,7 @@ Source dir: `webapps/frontend/ui/cockpit/client/scripts/pages/` (9 page files) +
 | Tasks dashboard (Cockpit view, not Tasklist) | `pages/tasks.js` + plugin `tasks/` (`cockpit.tasks.dashboard`) | `src/app/(app)/cockpit/tasks/page.tsx` | 🟡 | dashboard widgets via plugin slot not wired | 4 |
 | Sidebar navigation extensions | slot `cockpit.navigation` | — | ⬜ | nav-items system already exists; plugin extension not wired | 4 |
 | Search bar (global) | scattered in `pages/*.js` | — | ⬜ | not yet ported | 4 |
-| Engine selector | scattered | — | ⬜ | gated on Q1 | 4 |
+| Engine selector | scattered | — | ⬜ | per Q1: implemented as a cross-app sidebar dropdown in Phase 0 (this row tracks Cockpit-specific engine-aware deep-links) | 4 |
 
 ---
 
@@ -426,11 +442,11 @@ These are the non-`engine-rest` Spring endpoints served by `webapps/assembly` to
 | `/api/admin/auth/user/{engine}` | `UserAuthenticationResource.getAuthenticatedUser` | Webapp session check (currently unused by next; replaced by cookie session) |
 | `/api/admin/auth/user/{engine}/login/{appName}` | `UserAuthenticationResource.doLogin` | Legacy login form |
 | `/api/admin/auth/user/{engine}/logout` | `UserAuthenticationResource.doLogout` | Legacy logout |
-| `/api/admin/setup/{engine}/user/create` | `SetupResource.createInitialUser` | First-run install (gated on Q3) |
+| `/api/admin/setup/{engine}/user/create` | `SetupResource.createInitialUser` | First-run install (kept per Q3) |
 | `/api/admin/plugin/adminPlugins/{engine}/metrics/aggregated` | `MetricsRestService` | Admin execution metrics page |
 | `/api/cockpit/...` | Cockpit plugin REST resources (registered via `CockpitRuntimeDelegate`) | Cockpit pages — process statistics, batch detail, called-process drill-down, etc. |
 | `/api/tasklist/...` | Tasklist plugin REST resources (`AbstractTasklistPluginResource`) | Tasklist pages — custom filters, candidate-group queries |
-| `/api/welcome/...` | `WelcomeRuntimeDelegate` resources | Welcome custom links (gated on Q1 for multi-engine context) |
+| `/api/welcome/...` | `WelcomeRuntimeDelegate` resources | Welcome custom links (engine-scoped per Q1) |
 | `/api/<app>/plugin/static/{file}` | Plugin static asset serving (`AbstractPluginRootResource.getAsset`) | Legacy plugin static assets — **🚫 dropped post-cutover**; webapps-next plugins ship their assets via Next's `public/` |
 
 **Phase 0 task:** enumerate every `@Path` in `webapps/assembly/src/main/java/` and confirm each maps to a row above. Rows above are the categories; the full path list lives in the Phase 0 deliverable doc.
@@ -451,7 +467,8 @@ These are the non-`engine-rest` Spring endpoints served by `webapps/assembly` to
 - `next.config.mjs` rewrites extended with `/api/{cockpit,admin,tasklist,welcome}/*` (§3.2).
 - `distro/run/assembly/resources/run.sh` + `run.bat` extended with `--ui {legacy|next|both}` flag. Default `legacy`.
 - Spring reverse-proxy config for `--ui next`/`both` modes routing `/camunda/app/<app>/*` to Next.js.
-- Auth hardening: CSRF token, idle timeout, `groups[]` claim. New tests in `e2e/auth.spec.ts`.
+- Auth hardening: CSRF token, idle timeout, `groups[]` claim, `engine` claim (per Q1). New tests in `e2e/auth.spec.ts`.
+- Multi-engine (Q1): `engineGet`/`engineFetch` signature extended with optional `{engine}` opt; sidebar engine selector component; engine list fetched once at the `(app)/layout.tsx` level; engine switch persists via cookie reissue.
 - `webapps-next/messages/{en,de}.json` produced by `scripts/migrate-locales.mjs`; collision log committed.
 - `next-intl` wired in `src/proxy.ts`; one string in an existing page renders through it.
 - Playwright base config supports phase tags (`@phase-N` grep). `e2e/smoke.spec.ts` boots a distro and hits `/welcome`, `/tasklist`, `/admin`, `/cockpit`.
@@ -459,7 +476,7 @@ These are the non-`engine-rest` Spring endpoints served by `webapps/assembly` to
 - Maven build integration decision documented (Maven-invokes-npm vs. pre-built tarball) + implemented.
 
 **Exit criteria.**
-1. Open questions Q1, Q2, Q3, Q4 answered or explicitly deferred to a specific later phase.
+1. Multi-engine support (Q1) functional end-to-end: engine list fetched from `/api/engine/engine/`, sidebar selector switches engine, cookie `engine` claim persists across requests, all `engineGet` paths threaded through the selected engine.
 2. `mvn -pl webapps/webapp-rest -am clean install` succeeds; legacy webapp still serves `/camunda/app/*` with `--ui legacy` (no regression).
 3. `--ui next` boots both Spring Boot and Next.js; `/camunda/app/welcome` reaches the Next.js page through the reverse proxy.
 4. Reference plugin from `plugins-samples/` loads and renders into its slot.
