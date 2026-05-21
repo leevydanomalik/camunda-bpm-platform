@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   ClipboardList,
   FileBox,
+  Home,
   Inbox,
   Layers,
   LayoutDashboard,
@@ -24,6 +25,10 @@ export type NavSection = {
 };
 
 export const navSections: NavSection[] = [
+  {
+    label: "Home",
+    items: [{ title: "Welcome", url: "/welcome", icon: Home }],
+  },
   {
     label: "Cockpit",
     items: [

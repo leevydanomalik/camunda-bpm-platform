@@ -136,7 +136,14 @@ export default async function ProcessDefinitionPage({ params }: { params: Promis
               <TableBody>
                 {instances.map((i) => (
                   <TableRow key={i.id}>
-                    <TableCell className="font-mono text-xs">{i.id}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      <Link
+                        href={`/cockpit/processes/${encodeURIComponent(def.key)}/instances/${encodeURIComponent(i.id)}`}
+                        className="hover:underline"
+                      >
+                        {i.id}
+                      </Link>
+                    </TableCell>
                     <TableCell>{i.businessKey ?? "—"}</TableCell>
                     <TableCell>{i.suspended ? "Suspended" : (i.state ?? "Active")}</TableCell>
                   </TableRow>
