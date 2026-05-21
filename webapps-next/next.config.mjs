@@ -9,9 +9,6 @@ const nextConfig = {
     // Tighten once the codebase is stable.
     ignoreBuildErrors: true,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   turbopack: {
     root: process.cwd(),
   },
