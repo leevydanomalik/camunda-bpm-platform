@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 
-import { BpmnViewer } from "@/components/bpmn-viewer";
+import { type ActivityBadge, BpmnViewer } from "@/components/bpmn-viewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +45,12 @@ function flattenActivityIds(node: ActivityInstance | undefined): string[] {
   for (const child of node.childActivityInstances ?? []) ids.push(...flattenActivityIds(child));
   for (const t of node.childTransitionInstances ?? []) ids.push(t.activityId);
   return ids;
+}
+
+function countByActivity(ids: string[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const id of ids) out[id] = (out[id] ?? 0) + 1;
+  return out;
 }
 
 async function load(id: string) {
@@ -134,10 +140,37 @@ export default async function InstanceDetailPage({
         <Card>
           <CardHeader>
             <CardTitle>Diagram</CardTitle>
-            <CardDescription>Active activities highlighted in primary color.</CardDescription>
+            <CardDescription>
+              Active activities outlined; counts shown bottom-left for parallel/multi-instance executions.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <BpmnViewer xml={xml} height={420} activityIds={activeActivityIds} />
+            <BpmnViewer
+              xml={xml}
+              height={420}
+              activityIds={activeActivityIds}
+              badges={Object.entries(countByActivity(activeActivityIds))
+                .filter(([, c]) => c > 1)
+                .map(
+                  ([elementId, count]): ActivityBadge => ({
+                    elementId,
+                    count,
+                    tone: "default",
+                    position: "bottom-left",
+                  }),
+                )
+                .concat(
+                  incidents
+                    .filter((i) => i.activityId)
+                    .reduce<ActivityBadge[]>((acc, i) => {
+                      if (!i.activityId) return acc;
+                      const existing = acc.find((b) => b.elementId === i.activityId);
+                      if (existing) existing.count += 1;
+                      else acc.push({ elementId: i.activityId, count: 1, tone: "warning", position: "top-right" });
+                      return acc;
+                    }, []),
+                )}
+            />
           </CardContent>
         </Card>
       ) : null}

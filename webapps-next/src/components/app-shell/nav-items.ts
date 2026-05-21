@@ -26,8 +26,8 @@ export type NavSection = {
 
 export const navSections: NavSection[] = [
   {
-    label: "Home",
-    items: [{ title: "Welcome", url: "/welcome", icon: Home }],
+    label: "Welcome",
+    items: [{ title: "Home", url: "/welcome", icon: Home }],
   },
   {
     label: "Cockpit",

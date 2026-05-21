@@ -2,11 +2,19 @@ import Link from "next/link";
 
 import { ArrowLeft } from "lucide-react";
 
+import { type ActivityBadge, BpmnViewer } from "@/components/bpmn-viewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { engineGet } from "@/lib/camunda/engine";
+
+type ActivityStatistic = {
+  id: string; // activityId
+  instances: number;
+  failedJobs: number;
+  incidents?: Array<{ incidentType: string; incidentCount: number }>;
+};
 
 type ProcessDefinition = {
   id: string;
@@ -47,6 +55,41 @@ async function loadInstances(definitionId: string): Promise<ProcessInstance[]> {
   }
 }
 
+async function loadDiagram(definitionId: string): Promise<string | null> {
+  try {
+    const res = await engineGet<{ id: string; bpmn20Xml: string }>(
+      `/process-definition/${encodeURIComponent(definitionId)}/xml`,
+    );
+    return res.bpmn20Xml;
+  } catch {
+    return null;
+  }
+}
+
+async function loadActivityStatistics(definitionId: string): Promise<ActivityStatistic[]> {
+  try {
+    return await engineGet<ActivityStatistic[]>(
+      `/process-definition/${encodeURIComponent(definitionId)}/statistics?incidents=true`,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function buildBadges(stats: ActivityStatistic[]): ActivityBadge[] {
+  const badges: ActivityBadge[] = [];
+  for (const s of stats) {
+    if (s.instances > 0) {
+      badges.push({ elementId: s.id, count: s.instances, tone: "default", position: "bottom-left" });
+    }
+    const incidentCount = s.incidents?.reduce((a, b) => a + b.incidentCount, 0) ?? 0;
+    if (incidentCount > 0) {
+      badges.push({ elementId: s.id, count: incidentCount, tone: "warning", position: "top-right" });
+    }
+  }
+  return badges;
+}
+
 export default async function ProcessDefinitionPage({ params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
   const def = await loadDefinition(key);
@@ -68,7 +111,16 @@ export default async function ProcessDefinitionPage({ params }: { params: Promis
     );
   }
 
-  const instances = await loadInstances(def.id);
+  const [instances, xml, stats] = await Promise.all([
+    loadInstances(def.id),
+    loadDiagram(def.id),
+    loadActivityStatistics(def.id),
+  ]);
+  const badges = buildBadges(stats);
+  const totalIncidents = stats.reduce(
+    (sum, s) => sum + (s.incidents?.reduce((a, b) => a + b.incidentCount, 0) ?? 0),
+    0,
+  );
 
   return (
     <div className="space-y-6">
@@ -87,9 +139,26 @@ export default async function ProcessDefinitionPage({ params }: { params: Promis
               {def.suspended ? " · suspended" : ""}
             </p>
           </div>
-          <Badge variant="secondary">{instances.length} recent instances</Badge>
+          <div className="flex gap-2">
+            <Badge variant="secondary">{instances.length} recent instances</Badge>
+            {totalIncidents > 0 ? <Badge variant="destructive">{totalIncidents} incidents</Badge> : null}
+          </div>
         </div>
       </div>
+
+      {xml ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Diagram</CardTitle>
+            <CardDescription>
+              Instance counts shown bottom-left in primary; incident counts top-right in destructive.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BpmnViewer xml={xml} height={420} badges={badges} />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>

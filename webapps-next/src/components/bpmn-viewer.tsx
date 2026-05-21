@@ -5,6 +5,18 @@ import { useEffect, useRef, useState } from "react";
 // ── Minimal ambient types for what we use from bpmn-js ──
 type BpmnCanvas = {
   zoom: (arg?: string | number, center?: string | { x: number; y: number }) => number;
+  addMarker: (id: string, cls: string) => void;
+};
+type BpmnOverlays = {
+  add: (
+    elementId: string,
+    type: string,
+    options: {
+      position: { top?: number; bottom?: number; left?: number; right?: number };
+      html: string | HTMLElement;
+    },
+  ) => string;
+  remove: (filter: { id?: string; element?: string; type?: string } | string) => void;
 };
 type BpmnJsViewer = {
   importXML: (xml: string) => Promise<{ warnings: unknown[] }>;
@@ -12,14 +24,29 @@ type BpmnJsViewer = {
   destroy: () => void;
 };
 
+/** Numbered badge over a BPMN element (instance count, incident count, etc.). */
+export type ActivityBadge = {
+  elementId: string;
+  count: number;
+  /** "default" → primary color (instance counts), "warning" → destructive (incidents). */
+  tone?: "default" | "warning";
+  /** Where to anchor the badge relative to the element. */
+  position?: "bottom-left" | "top-right";
+};
+
 export type BpmnViewerProps = {
   xml: string;
   height?: number | string;
-  /** Highlight one or more activity IDs (e.g. activity instances of the current execution). */
+  /** Activity IDs to outline as "currently active" (matches Camunda Cockpit's highlight). */
   activityIds?: string[];
+  /** Per-activity numbered badges (instance counts, incident counts, ...). */
+  badges?: ActivityBadge[];
 };
 
-export function BpmnViewer({ xml, height = 400, activityIds }: BpmnViewerProps) {
+const HIGHLIGHT_MARKER = "cam-active";
+const BADGE_OVERLAY_TYPE = "activity-badge";
+
+export function BpmnViewer({ xml, height = 400, activityIds, badges }: BpmnViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<BpmnJsViewer | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,16 +75,38 @@ export function BpmnViewer({ xml, height = 400, activityIds }: BpmnViewerProps) 
         await viewer.importXML(xml);
         if (cancelled) return;
 
-        viewer.get<BpmnCanvas>("canvas").zoom("fit-viewport", "auto");
+        const canvas = viewer.get<BpmnCanvas>("canvas");
+        canvas.zoom("fit-viewport", "auto");
 
-        // Highlight active activities by adding a CSS marker class via the canvas API.
+        // Active-activity outline (matches Cockpit's "active" highlight).
         if (activityIds && activityIds.length > 0) {
-          const canvasAny = viewer.get<{ addMarker: (id: string, cls: string) => void }>("canvas");
           for (const id of activityIds) {
             try {
-              canvasAny.addMarker(id, "highlight");
+              canvas.addMarker(id, HIGHLIGHT_MARKER);
             } catch {
-              // Activity may not be in the diagram (e.g. nested subprocess) — ignore.
+              // Activity may not be in the diagram (e.g. inside collapsed subprocess) — ignore.
+            }
+          }
+        }
+
+        // Numbered badges via the overlays API — same pattern Cockpit uses.
+        if (badges && badges.length > 0) {
+          const overlays = viewer.get<BpmnOverlays>("overlays");
+          for (const b of badges) {
+            if (b.count <= 0) continue;
+            const el = document.createElement("span");
+            el.className = `cam-badge cam-badge-${b.tone ?? "default"}`;
+            el.textContent = b.count >= 1000 ? `${Math.floor(b.count / 1000)}k` : String(b.count);
+            try {
+              overlays.add(b.elementId, BADGE_OVERLAY_TYPE, {
+                position:
+                  b.position === "top-right"
+                    ? { top: -8, right: -8 }
+                    : { bottom: -8, left: -8 },
+                html: el,
+              });
+            } catch {
+              // Element not on diagram — ignore.
             }
           }
         }
@@ -80,11 +129,14 @@ export function BpmnViewer({ xml, height = 400, activityIds }: BpmnViewerProps) 
         viewerRef.current = null;
       }
     };
-  }, [xml, activityIds]);
+  }, [xml, activityIds, badges]);
 
   if (error) {
     return (
-      <div className="bg-muted/30 text-destructive flex items-center justify-center rounded-md border p-4 text-sm" style={{ minHeight: height }}>
+      <div
+        className="bg-muted/30 text-destructive flex items-center justify-center rounded-md border p-4 text-sm"
+        style={{ minHeight: height }}
+      >
         {error}
       </div>
     );
@@ -99,12 +151,35 @@ export function BpmnViewer({ xml, height = 400, activityIds }: BpmnViewerProps) 
       ) : null}
       <div ref={containerRef} className="h-full w-full" />
       <style>{`
-        .djs-overlay.highlight,
-        .djs-element.highlight .djs-visual > :first-child {
+        .djs-element.${HIGHLIGHT_MARKER} .djs-visual > :nth-child(1) {
           stroke: var(--primary) !important;
           stroke-width: 3px !important;
-          fill: var(--primary) !important;
-          fill-opacity: 0.08 !important;
+        }
+        .djs-element.${HIGHLIGHT_MARKER} .djs-visual > rect,
+        .djs-element.${HIGHLIGHT_MARKER} .djs-visual > circle {
+          fill: color-mix(in oklab, var(--primary) 10%, transparent) !important;
+        }
+        .cam-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 20px;
+          height: 20px;
+          padding: 0 6px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 600;
+          line-height: 1;
+          font-family: var(--font-sans, system-ui, sans-serif);
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+        }
+        .cam-badge-default {
+          background: var(--primary);
+          color: var(--primary-foreground);
+        }
+        .cam-badge-warning {
+          background: var(--destructive);
+          color: var(--destructive-foreground);
         }
       `}</style>
     </div>
