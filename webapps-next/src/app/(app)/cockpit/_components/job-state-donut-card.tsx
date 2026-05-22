@@ -16,9 +16,9 @@ async function safeCount(path: string): Promise<number> {
 
 export async function JobStateDonutCard() {
   const [failed, suspended, retrying, active] = await Promise.all([
-    safeCount("/job/count?withException=true&noRetriesLeft=true"),
+    safeCount("/job/count?withException=true&noRetriesLeft=true&suspended=false"),
     safeCount("/job/count?suspended=true"),
-    safeCount("/job/count?withException=true&withRetriesLeft=true"),
+    safeCount("/job/count?withException=true&withRetriesLeft=true&suspended=false"),
     safeCount("/job/count?withException=false&suspended=false"),
   ]);
 
