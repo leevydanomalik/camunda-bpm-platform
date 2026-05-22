@@ -4,6 +4,7 @@ import { ExtensionSlot } from "@/lib/plugins/extension-slot";
 
 import { CockpitQueryProvider } from "./_components/cockpit-query-provider";
 import { DashboardHeader } from "./_components/dashboard-header";
+import { KpiGrid } from "./_components/kpi-grid";
 import { parseRange } from "./_components/range";
 
 type PageProps = {
@@ -30,8 +31,7 @@ export default async function CockpitDashboard({ searchParams }: PageProps) {
     <div className="space-y-6">
       <DashboardHeader username={username} range={range.key} />
 
-      {/* KPI grid — replaced in Task 5 */}
-      <PlaceholderCard title="KPI grid (Task 5)" height="h-32" />
+      <KpiGrid range={range} />
 
       {/* Primary charts row — replaced in Tasks 6 & 7 */}
       <div className="grid gap-4 lg:grid-cols-3">
