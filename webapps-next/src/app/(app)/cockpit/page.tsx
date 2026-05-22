@@ -1,106 +1,78 @@
-import { AlertTriangle, ClipboardList, Play, Workflow } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getSession } from "@/lib/auth/session";
+import { ExtensionSlot } from "@/lib/plugins/extension-slot";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { engineGet } from "@/lib/camunda/engine";
+import { CockpitQueryProvider } from "./_components/cockpit-query-provider";
+import { DashboardHeader } from "./_components/dashboard-header";
+import { parseRange } from "./_components/range";
 
-type CountResponse = { count: number };
+type PageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
 
-async function safeCount(path: string): Promise<number | null> {
-  try {
-    const res = await engineGet<CountResponse>(path);
-    return res.count;
-  } catch {
-    return null;
+function paramsToSearch(params: Record<string, string | string[] | undefined>): URLSearchParams {
+  const sp = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === "string") sp.set(key, value);
+    else if (Array.isArray(value) && value[0]) sp.set(key, value[0]);
   }
+  return sp;
 }
 
-export default async function CockpitDashboard() {
-  const [definitions, instances, incidents, tasks] = await Promise.all([
-    safeCount("/process-definition/count?latestVersion=true&active=true"),
-    safeCount("/process-instance/count"),
-    safeCount("/incident/count"),
-    safeCount("/task/count"),
-  ]);
+export default async function CockpitDashboard({ searchParams }: PageProps) {
+  const session = await getSession();
+  const username = session?.username ?? "user";
+
+  const sp = paramsToSearch(await searchParams);
+  const range = parseRange(sp);
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Cockpit</h1>
-        <p className="text-muted-foreground text-sm">Engine status at a glance.</p>
+      <DashboardHeader username={username} range={range.key} />
+
+      {/* KPI grid — replaced in Task 5 */}
+      <PlaceholderCard title="KPI grid (Task 5)" height="h-32" />
+
+      {/* Primary charts row — replaced in Tasks 6 & 7 */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <PlaceholderCard title="Instances timeseries (Task 6)" className="lg:col-span-2" height="h-72" />
+        <PlaceholderCard title="Job state donut (Task 7)" height="h-72" />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Process definitions"
-          value={definitions}
-          description="Latest version, active"
-          icon={<Workflow className="text-muted-foreground size-4" />}
-        />
-        <StatCard
-          title="Running instances"
-          value={instances}
-          description="Currently in flight"
-          icon={<Play className="text-muted-foreground size-4" />}
-        />
-        <StatCard
-          title="Open incidents"
-          value={incidents}
-          description="Unresolved"
-          icon={<AlertTriangle className="text-muted-foreground size-4" />}
-          tone={incidents && incidents > 0 ? "warning" : "default"}
-        />
-        <StatCard
-          title="User tasks"
-          value={tasks}
-          description="Open across all instances"
-          icon={<ClipboardList className="text-muted-foreground size-4" />}
-        />
+      {/* Secondary charts row — replaced in Tasks 8 & 9 */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <PlaceholderCard title="Top process definitions (Task 8)" height="h-64" />
+        <PlaceholderCard title="Top incident types (Task 9)" height="h-64" />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Process activity</CardTitle>
-          <CardDescription>Charts land here next — wired into history/process-instance.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="text-muted-foreground flex h-32 items-center justify-center text-sm">
-            (placeholder)
-          </div>
-        </CardContent>
-      </Card>
+      {/* Activity tabs + plugin sidebar — replaced in Task 11 */}
+      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+        <CockpitQueryProvider>
+          <PlaceholderCard title="Activity tabs (Task 11)" height="h-72" />
+        </CockpitQueryProvider>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Custom widgets</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <ExtensionSlot point="cockpit.dashboard.widget" />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
 
-function StatCard({
-  title,
-  value,
-  description,
-  icon,
-  tone = "default",
-}: {
-  title: string;
-  value: number | null;
-  description: string;
-  icon: React.ReactNode;
-  tone?: "default" | "warning";
-}) {
-  const display = value === null ? "—" : new Intl.NumberFormat().format(value);
+function PlaceholderCard({ title, height, className }: { title: string; height: string; className?: string }) {
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        {icon}
+    <Card className={className}>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm">{title}</CardTitle>
       </CardHeader>
       <CardContent>
-        <div
-          className={`text-2xl font-semibold ${tone === "warning" && value && value > 0 ? "text-destructive" : ""}`}
-        >
-          {display}
+        <div className={`text-muted-foreground bg-muted/30 flex ${height} items-center justify-center rounded text-xs`}>
+          (placeholder)
         </div>
-        <p className="text-muted-foreground text-xs">
-          {value === null ? "Engine unreachable" : description}
-        </p>
       </CardContent>
     </Card>
   );
