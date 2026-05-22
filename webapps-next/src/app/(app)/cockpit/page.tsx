@@ -9,6 +9,7 @@ import { JobStateDonutCard } from "./_components/job-state-donut-card";
 import { KpiGrid } from "./_components/kpi-grid";
 import { parseRange } from "./_components/range";
 import { TopDefinitionsBarCard } from "./_components/top-definitions-bar-card";
+import { TopIncidentsBarCard } from "./_components/top-incidents-bar-card";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -45,7 +46,7 @@ export default async function CockpitDashboard({ searchParams }: PageProps) {
       {/* Secondary charts row — replaced in Tasks 8 & 9 */}
       <div className="grid gap-4 lg:grid-cols-2">
         <TopDefinitionsBarCard />
-        <PlaceholderCard title="Top incident types (Task 9)" height="h-64" />
+        <TopIncidentsBarCard range={range} />
       </div>
 
       {/* Activity tabs + plugin sidebar — replaced in Task 11 */}
