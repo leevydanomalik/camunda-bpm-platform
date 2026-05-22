@@ -4,6 +4,7 @@ import { ExtensionSlot } from "@/lib/plugins/extension-slot";
 
 import { CockpitQueryProvider } from "./_components/cockpit-query-provider";
 import { DashboardHeader } from "./_components/dashboard-header";
+import { InstancesTimeseriesCard } from "./_components/instances-timeseries-card";
 import { KpiGrid } from "./_components/kpi-grid";
 import { parseRange } from "./_components/range";
 
@@ -35,7 +36,7 @@ export default async function CockpitDashboard({ searchParams }: PageProps) {
 
       {/* Primary charts row — replaced in Tasks 6 & 7 */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <PlaceholderCard title="Instances timeseries (Task 6)" className="lg:col-span-2" height="h-72" />
+        <InstancesTimeseriesCard range={range} />
         <PlaceholderCard title="Job state donut (Task 7)" height="h-72" />
       </div>
 
