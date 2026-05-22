@@ -3,42 +3,30 @@ import { engineGet } from "@/lib/camunda/engine";
 
 import { type DefinitionRow, TopDefinitionsBarChart } from "./top-definitions-bar-chart";
 
-type ProcessDefinitionDto = {
-  key: string;
-  name: string | null;
+type StatisticsDto = {
+  id: string;
+  instances: number;
+  definition: {
+    key: string;
+    name: string | null;
+  };
 };
 
-type Count = { count: number };
-
-async function safeCount(path: string): Promise<number> {
-  try {
-    const res = await engineGet<Count>(path);
-    return res.count;
-  } catch {
-    return 0;
-  }
-}
-
 export async function TopDefinitionsBarCard() {
-  let defs: ProcessDefinitionDto[] = [];
+  let stats: StatisticsDto[] = [];
   try {
-    defs = await engineGet<ProcessDefinitionDto[]>(
-      "/process-definition?latestVersion=true&active=true&sortBy=name&sortOrder=asc&maxResults=50",
-    );
+    stats = await engineGet<StatisticsDto[]>("/process-definition/statistics?failedJobs=false&incidents=false");
   } catch {
-    defs = [];
+    stats = [];
   }
 
-  const withCounts = await Promise.all(
-    defs.map(async (d) => ({
-      key: d.key,
-      name: d.name ?? d.key,
-      count: await safeCount(`/process-instance/count?processDefinitionKey=${encodeURIComponent(d.key)}`),
-    })),
-  );
-
-  const data: DefinitionRow[] = withCounts
-    .filter((r) => r.count > 0)
+  const data: DefinitionRow[] = stats
+    .filter((s) => s.instances > 0)
+    .map((s) => ({
+      key: s.definition.key,
+      name: s.definition.name ?? s.definition.key,
+      count: s.instances,
+    }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
