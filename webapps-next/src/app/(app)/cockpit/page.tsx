@@ -38,22 +38,19 @@ export default async function CockpitDashboard({ searchParams }: PageProps) {
 
       <KpiGrid range={range} />
 
-      {/* Primary charts row — replaced in Tasks 6 & 7 */}
       <div className="grid gap-4 lg:grid-cols-3">
         <InstancesTimeseriesCard range={range} />
         <JobStateDonutCard />
       </div>
 
-      {/* Secondary charts row — replaced in Tasks 8 & 9 */}
       <div className="grid gap-4 lg:grid-cols-2">
         <TopDefinitionsBarCard />
         <TopIncidentsBarCard range={range} />
       </div>
 
-      {/* Activity tabs + plugin sidebar — replaced in Task 11 */}
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <CockpitQueryProvider>
-          <ActivityTabs range={range.key} />
+          <ActivityTabs />
         </CockpitQueryProvider>
         <Card>
           <CardHeader className="pb-3">

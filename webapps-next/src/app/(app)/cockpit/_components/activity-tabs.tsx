@@ -13,7 +13,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 import type { ActivityItem, ActivityResponse, ActivityTab } from "./activity-types";
-import type { RangeKey } from "./range";
 
 const TABS: { value: ActivityTab; label: string }[] = [
   { value: "recent", label: "Activity" },
@@ -29,7 +28,7 @@ async function fetchActivity(tab: ActivityTab): Promise<ActivityResponse> {
   return (await res.json()) as ActivityResponse;
 }
 
-export function ActivityTabs({ range: _range }: { range: RangeKey }) {
+export function ActivityTabs() {
   const [active, setActive] = useState<ActivityTab>("recent");
 
   return (
