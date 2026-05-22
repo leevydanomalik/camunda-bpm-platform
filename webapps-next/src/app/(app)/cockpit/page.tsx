@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSession } from "@/lib/auth/session";
 import { ExtensionSlot } from "@/lib/plugins/extension-slot";
 
+import { ActivityTabs } from "./_components/activity-tabs";
 import { CockpitQueryProvider } from "./_components/cockpit-query-provider";
 import { DashboardHeader } from "./_components/dashboard-header";
 import { InstancesTimeseriesCard } from "./_components/instances-timeseries-card";
@@ -52,7 +53,7 @@ export default async function CockpitDashboard({ searchParams }: PageProps) {
       {/* Activity tabs + plugin sidebar — replaced in Task 11 */}
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <CockpitQueryProvider>
-          <PlaceholderCard title="Activity tabs (Task 11)" height="h-72" />
+          <ActivityTabs range={range.key} />
         </CockpitQueryProvider>
         <Card>
           <CardHeader className="pb-3">
@@ -64,20 +65,5 @@ export default async function CockpitDashboard({ searchParams }: PageProps) {
         </Card>
       </div>
     </div>
-  );
-}
-
-function PlaceholderCard({ title, height, className }: { title: string; height: string; className?: string }) {
-  return (
-    <Card className={className}>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className={`text-muted-foreground bg-muted/30 flex ${height} items-center justify-center rounded text-xs`}>
-          (placeholder)
-        </div>
-      </CardContent>
-    </Card>
   );
 }
