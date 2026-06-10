@@ -59,7 +59,11 @@ export function UserMenu({ username }: { username: string }) {
               Profile
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={signOut} disabled={isPending} className="text-destructive focus:text-destructive">
+            <DropdownMenuItem
+              onClick={signOut}
+              disabled={isPending}
+              className="text-destructive focus:text-destructive"
+            >
               <LogOut className="mr-2 size-4" />
               {isPending ? "Signing out…" : "Sign out"}
             </DropdownMenuItem>

@@ -2,8 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { SESSION_COOKIE, decodeSession } from "@/lib/auth/session";
 
-// Use Node runtime so node:crypto is available for HMAC verification.
-export const runtime = "nodejs";
+// Next 16 always runs proxy.ts on Node.js — no runtime export needed.
 
 const PUBLIC_PATH_PREFIXES = [
   "/login",

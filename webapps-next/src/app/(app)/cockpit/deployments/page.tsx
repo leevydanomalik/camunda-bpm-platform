@@ -1,87 +1,74 @@
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { engineGet } from "@/lib/camunda/engine";
 
-type Deployment = {
-  id: string;
-  name: string | null;
-  source: string | null;
-  deploymentTime: string;
-  tenantId: string | null;
-};
+import { DeploymentRail, type DeploymentRow } from "./_components/deployment-rail";
+import { ResourceDetail, ResourceDetailEmpty } from "./_components/resource-detail";
+import { ResourceList, type ResourceRow } from "./_components/resource-list";
+import { DeploymentsWorkspace } from "./_components/workspace";
 
-async function loadDeployments(): Promise<{ deployments: Deployment[]; error: string | null }> {
+async function safeDeployments(): Promise<{ deployments: DeploymentRow[] | null; error: string | null }> {
   try {
-    const deployments = await engineGet<Deployment[]>(
+    const deployments = await engineGet<DeploymentRow[]>(
       "/deployment?sortBy=deploymentTime&sortOrder=desc&maxResults=100",
     );
     return { deployments, error: null };
   } catch (err) {
-    return { deployments: [], error: err instanceof Error ? err.message : "Failed to load deployments" };
+    return {
+      deployments: null,
+      error: err instanceof Error ? err.message : "Engine unreachable",
+    };
   }
 }
 
-function formatDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
+async function safeResources(deploymentId: string): Promise<{ resources: ResourceRow[] | null; error: string | null }> {
   try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
+    const resources = await engineGet<ResourceRow[]>(`/deployment/${encodeURIComponent(deploymentId)}/resources`);
+    resources.sort((a, b) => a.name.localeCompare(b.name));
+    return { resources, error: null };
+  } catch (err) {
+    return {
+      resources: null,
+      error: err instanceof Error ? err.message : "Failed to load resources",
+    };
   }
 }
 
-export default async function DeploymentsPage() {
-  const { deployments, error } = await loadDeployments();
+export default async function DeploymentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ deploymentId?: string; resourceId?: string }>;
+}) {
+  const { deploymentId: rawDeploymentId, resourceId: rawResourceId } = await searchParams;
+  const deploymentId = rawDeploymentId?.trim() || null;
+  const resourceId = rawResourceId?.trim() || null;
+
+  const { deployments, error: depError } = await safeDeployments();
+
+  const { resources, error: resError } = deploymentId
+    ? await safeResources(deploymentId)
+    : { resources: null as ResourceRow[] | null, error: null };
+
+  const showDetail = Boolean(deploymentId && resourceId);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-end justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Deployments</h1>
-          <p className="text-muted-foreground text-sm">Newest first, top 100.</p>
-        </div>
-        <Badge variant="secondary">{deployments.length} total</Badge>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>All deployments</CardTitle>
-          <CardDescription>
-            <code className="bg-muted rounded px-1 text-xs">/deployment</code>
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          {error ? (
-            <div className="text-destructive p-6 text-sm">Failed to load: {error}</div>
-          ) : deployments.length === 0 ? (
-            <div className="text-muted-foreground p-6 text-sm">No deployments yet.</div>
+    <div className="h-[calc(100svh-5rem)] md:h-[calc(100svh-6rem)]">
+      <DeploymentsWorkspace
+        listSlot={<DeploymentRail deployments={deployments} selectedId={deploymentId} error={depError} />}
+        resourcesSlot={
+          <ResourceList
+            deploymentId={deploymentId}
+            resources={resources}
+            selectedResourceId={resourceId}
+            error={resError}
+          />
+        }
+        detailSlot={
+          showDetail && deploymentId && resourceId ? (
+            <ResourceDetail deploymentId={deploymentId} resourceId={resourceId} />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Deployed</TableHead>
-                  <TableHead>Tenant</TableHead>
-                  <TableHead>ID</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {deployments.map((d) => (
-                  <TableRow key={d.id}>
-                    <TableCell className="font-medium">{d.name ?? "(unnamed)"}</TableCell>
-                    <TableCell>{d.source ?? "—"}</TableCell>
-                    <TableCell className="whitespace-nowrap text-xs">{formatDate(d.deploymentTime)}</TableCell>
-                    <TableCell>{d.tenantId ?? "—"}</TableCell>
-                    <TableCell className="font-mono text-xs">{d.id}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+            <ResourceDetailEmpty hasDeployment={Boolean(deploymentId)} />
+          )
+        }
+      />
     </div>
   );
 }

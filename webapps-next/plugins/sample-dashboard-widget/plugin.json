@@ -1,0 +1,19 @@
+{
+  "$schema": "../_schema.json",
+  "apiVersion": "1",
+  "id": "sample-dashboard-widget",
+  "version": "0.1.0",
+  "displayName": "Sample Dashboard Widget",
+  "description": "Reference plugin demonstrating the v0 plugin contract — a Recent Deployments card on the Cockpit dashboard.",
+  "app": "cockpit",
+  "client": {
+    "extensionPoints": [
+      {
+        "point": "cockpit.dashboard.widget",
+        "exportName": "RecentDeploymentsWidget",
+        "label": "Recent deployments",
+        "priority": 0
+      }
+    ]
+  }
+}

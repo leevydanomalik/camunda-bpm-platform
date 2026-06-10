@@ -30,7 +30,7 @@ yarn-error.log*
 tmux-server*.log
 
 # local env files
-# .env*.local
+.env*.local
 
 # vercel
 .vercel

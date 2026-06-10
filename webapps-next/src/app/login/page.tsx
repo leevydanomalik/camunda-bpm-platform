@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { Workflow } from "lucide-react";
 
 import { LoginForm } from "./_components/login-form";
@@ -23,11 +25,12 @@ export default function LoginPage() {
             <div className="font-medium tracking-tight">Sign in</div>
             <div className="mx-auto max-w-xl text-muted-foreground">
               Use your Camunda engine credentials. Default for fresh installs:{" "}
-              <code className="bg-muted rounded px-1">demo</code> /{" "}
-              <code className="bg-muted rounded px-1">demo</code>.
+              <code className="bg-muted rounded px-1">demo</code> / <code className="bg-muted rounded px-1">demo</code>.
             </div>
           </div>
-          <LoginForm />
+          <Suspense fallback={<div className="h-40" />}>
+            <LoginForm />
+          </Suspense>
         </div>
       </div>
     </div>

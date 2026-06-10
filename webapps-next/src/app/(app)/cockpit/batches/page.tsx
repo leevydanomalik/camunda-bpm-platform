@@ -1,111 +1,160 @@
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import Link from "next/link";
+
+import { Activity, CheckCircle2, History } from "lucide-react";
+
 import { engineGet } from "@/lib/camunda/engine";
+import { cn } from "@/lib/utils";
 
-type Batch = {
-  id: string;
-  type: string;
-  totalJobs: number;
-  jobsCreated: number;
-  batchJobsPerSeed: number;
-  invocationsPerBatchJob: number;
-  seedJobDefinitionId: string;
-  monitorJobDefinitionId: string;
-  batchJobDefinitionId: string;
-  tenantId: string | null;
-  createUserId: string | null;
-  startTime?: string | null;
-  executionStartTime?: string | null;
-  suspended: boolean;
-};
+import {
+  type HistoricBatch,
+  HistoricBatchesTable,
+  type RunningBatch,
+  RunningBatchesTable,
+} from "./_components/batches-table";
 
-type BatchStatistic = Batch & {
-  remainingJobs: number;
-  completedJobs: number;
-  failedJobs: number;
-};
+type View = "running" | "history";
 
-async function loadBatches(): Promise<{ stats: BatchStatistic[]; error: string | null }> {
+async function loadRunning(): Promise<{ rows: RunningBatch[]; error: string | null }> {
   try {
-    const stats = await engineGet<BatchStatistic[]>("/batch/statistics?sortBy=startTime&sortOrder=desc&maxResults=50");
-    return { stats, error: null };
+    const rows = await engineGet<RunningBatch[]>("/batch/statistics?sortBy=startTime&sortOrder=desc&maxResults=200");
+    return { rows, error: null };
   } catch (err) {
-    return { stats: [], error: err instanceof Error ? err.message : "Failed to load batches" };
+    return { rows: [], error: err instanceof Error ? err.message : "Failed to load batches" };
   }
 }
 
-function progressPct(b: BatchStatistic): number {
-  if (b.totalJobs === 0) return 0;
-  return Math.round(((b.completedJobs + b.failedJobs) / b.totalJobs) * 100);
+async function loadHistory(): Promise<{ rows: HistoricBatch[]; error: string | null }> {
+  try {
+    const rows = await engineGet<HistoricBatch[]>("/history/batch?sortBy=startTime&sortOrder=desc&maxResults=200");
+    return { rows, error: null };
+  } catch (err) {
+    return { rows: [], error: err instanceof Error ? err.message : "Failed to load history" };
+  }
 }
 
-export default async function BatchesPage() {
-  const { stats, error } = await loadBatches();
+export default async function BatchesPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+  const { view: rawView } = await searchParams;
+  const view: View = rawView === "history" ? "history" : "running";
+
+  const [running, history] = await Promise.all([loadRunning(), loadHistory()]);
+
+  const totalFailed = running.rows.reduce((a, b) => a + b.failedJobs, 0);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Batches</h1>
-          <p className="text-muted-foreground text-sm">
-            Bulk operations (migration, modification, set-variables, etc.).
-          </p>
-        </div>
-        <Badge variant="secondary">{stats.length} running</Badge>
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight">Batches</h1>
+        <p className="text-muted-foreground text-sm">
+          Long-running bulk operations (migration, modification, set-variables, delete, …).
+        </p>
+      </header>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatTile
+          icon={<Activity className="text-muted-foreground size-4" />}
+          label="Running"
+          value={running.rows.length}
+        />
+        <StatTile
+          icon={<CheckCircle2 className="text-muted-foreground size-4" />}
+          label="In history"
+          value={history.rows.length}
+        />
+        <StatTile
+          icon={<Activity className="text-muted-foreground size-4" />}
+          label="Failed jobs in running"
+          value={totalFailed}
+          tone={totalFailed > 0 ? "warning" : "default"}
+        />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Running batches</CardTitle>
-          <CardDescription>
-            <code className="bg-muted rounded px-1 text-xs">/batch/statistics</code>
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          {error ? (
-            <div className="text-destructive p-6 text-sm">Failed to load: {error}</div>
-          ) : stats.length === 0 ? (
-            <div className="text-muted-foreground p-6 text-sm">No batches running.</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Done</TableHead>
-                  <TableHead className="text-right">Failed</TableHead>
-                  <TableHead>Progress</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {stats.map((b) => {
-                  const pct = progressPct(b);
-                  return (
-                    <TableRow key={b.id}>
-                      <TableCell className="font-mono text-xs">{b.id}</TableCell>
-                      <TableCell>{b.type}</TableCell>
-                      <TableCell className="text-right tabular-nums">{b.totalJobs}</TableCell>
-                      <TableCell className="text-right tabular-nums">{b.completedJobs}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {b.failedJobs > 0 ? <span className="text-destructive font-medium">{b.failedJobs}</span> : 0}
-                      </TableCell>
-                      <TableCell className="w-48">
-                        <div className="flex items-center gap-2">
-                          <Progress value={pct} className="h-2" />
-                          <span className="text-muted-foreground text-xs tabular-nums">{pct}%</span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+      <div className="bg-muted text-muted-foreground inline-flex items-center rounded-md p-0.5 text-xs">
+        <TabLink view="running" current={view} count={running.rows.length}>
+          <Activity className="size-3.5" /> Running
+        </TabLink>
+        <TabLink view="history" current={view} count={history.rows.length}>
+          <History className="size-3.5" /> History
+        </TabLink>
+      </div>
+
+      {view === "running" ? (
+        running.error ? (
+          <div className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border p-4 text-sm">
+            Failed to load: {running.error}
+          </div>
+        ) : running.rows.length === 0 ? (
+          <div className="text-muted-foreground rounded-md border border-dashed p-8 text-center text-sm">
+            No running batches.
+          </div>
+        ) : (
+          <RunningBatchesTable batches={running.rows} />
+        )
+      ) : history.error ? (
+        <div className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border p-4 text-sm">
+          Failed to load: {history.error}
+        </div>
+      ) : history.rows.length === 0 ? (
+        <div className="text-muted-foreground rounded-md border border-dashed p-8 text-center text-sm">
+          No historic batches.
+        </div>
+      ) : (
+        <HistoricBatchesTable batches={history.rows} />
+      )}
+    </div>
+  );
+}
+
+function TabLink({
+  view,
+  current,
+  count,
+  children,
+}: {
+  view: View;
+  current: View;
+  count: number;
+  children: React.ReactNode;
+}) {
+  const isActive = current === view;
+  return (
+    <Link
+      href={view === "running" ? "/cockpit/batches" : `/cockpit/batches?view=${view}`}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1",
+        isActive ? "bg-background text-foreground shadow-sm" : "hover:text-foreground",
+      )}
+    >
+      {children}
+      <span className="text-muted-foreground/80 ml-1 text-[10px] tabular-nums">{count}</span>
+    </Link>
+  );
+}
+
+function StatTile({
+  icon,
+  label,
+  value,
+  tone = "default",
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  tone?: "default" | "warning";
+}) {
+  return (
+    <div className="bg-card flex items-center justify-between rounded-md border px-4 py-3">
+      <div className="space-y-0.5">
+        <div className="text-muted-foreground text-xs">{label}</div>
+        <div
+          className={cn(
+            "text-2xl font-semibold tabular-nums",
+            tone === "warning" && value > 0 ? "text-destructive" : "",
           )}
-        </CardContent>
-      </Card>
+        >
+          {new Intl.NumberFormat().format(value)}
+        </div>
+      </div>
+      <div className="bg-muted text-muted-foreground flex size-9 items-center justify-center rounded-md">{icon}</div>
     </div>
   );
 }

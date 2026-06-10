@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import type { Metadata, Viewport } from "next";
 
+import { ThemeProvider } from "@/components/app-shell/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
 import "./globals.css";
@@ -21,8 +22,10 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen antialiased">
-        {children}
-        <Toaster />
+        <ThemeProvider>
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

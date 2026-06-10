@@ -26,11 +26,19 @@ function isActive(pathname: string, url: string): boolean {
   return pathname === url || pathname.startsWith(`${url}/`);
 }
 
-export function AppSidebar({ username }: { username: string }) {
+export function AppSidebar({
+  username,
+  variant = "inset",
+  collapsible = "icon",
+}: {
+  username: string;
+  variant?: "inset" | "sidebar" | "floating";
+  collapsible?: "icon" | "offcanvas" | "none";
+}) {
   const pathname = usePathname();
 
   return (
-    <Sidebar collapsible="icon" variant="inset">
+    <Sidebar collapsible={collapsible} variant={variant}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 import { type ActivityBadge, BpmnViewer } from "@/components/bpmn-viewer";
+import { StartProcessButton } from "@/components/start-process-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -76,6 +77,31 @@ async function loadActivityStatistics(definitionId: string): Promise<ActivitySta
   }
 }
 
+type HistoricActivityInstance = {
+  id: string;
+  activityId: string;
+  activityType: string;
+};
+
+/** All-time per-activity counts derived from /history/activity-instance.
+ *  v1 caps at maxResults=5000 — switch to a paginated/aggregating endpoint when
+ *  this becomes a hot spot. */
+async function loadHistoricActivityCounts(definitionId: string): Promise<Record<string, number>> {
+  try {
+    const items = await engineGet<HistoricActivityInstance[]>(
+      `/history/activity-instance?processDefinitionId=${encodeURIComponent(definitionId)}&maxResults=5000`,
+    );
+    const counts: Record<string, number> = {};
+    for (const it of items) {
+      if (!it.activityId) continue;
+      counts[it.activityId] = (counts[it.activityId] ?? 0) + 1;
+    }
+    return counts;
+  } catch {
+    return {};
+  }
+}
+
 function buildBadges(stats: ActivityStatistic[]): ActivityBadge[] {
   const badges: ActivityBadge[] = [];
   for (const s of stats) {
@@ -90,21 +116,32 @@ function buildBadges(stats: ActivityStatistic[]): ActivityBadge[] {
   return badges;
 }
 
-function buildHeatmap(stats: ActivityStatistic[]): Record<string, number> | undefined {
-  // Weight each activity by its share of the busiest activity. Busiest = 1.0,
-  // others scale down linearly. Activities with zero instances are omitted
-  // so the LUT only spans activities that actually have heat.
-  const max = stats.reduce((m, s) => Math.max(m, s.instances), 0);
+function normalizeToHeatmap(counts: Record<string, number>): Record<string, number> | undefined {
+  const max = Object.values(counts).reduce((m, c) => Math.max(m, c), 0);
   if (max === 0) return undefined;
   const heatmap: Record<string, number> = {};
-  for (const s of stats) {
-    if (s.instances > 0) heatmap[s.id] = s.instances / max;
+  for (const [id, c] of Object.entries(counts)) {
+    if (c > 0) heatmap[id] = c / max;
   }
   return heatmap;
 }
 
-export default async function ProcessDefinitionPage({ params }: { params: Promise<{ key: string }> }) {
+function runtimeHeatmap(stats: ActivityStatistic[]): Record<string, number> | undefined {
+  const counts: Record<string, number> = {};
+  for (const s of stats) counts[s.id] = s.instances;
+  return normalizeToHeatmap(counts);
+}
+
+export default async function ProcessDefinitionPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ key: string }>;
+  searchParams: Promise<{ heat?: string }>;
+}) {
   const { key } = await params;
+  const { heat } = await searchParams;
+  const heatMode: "runtime" | "history" = heat === "history" ? "history" : "runtime";
   const def = await loadDefinition(key);
 
   if (!def) {
@@ -124,13 +161,14 @@ export default async function ProcessDefinitionPage({ params }: { params: Promis
     );
   }
 
-  const [instances, xml, stats] = await Promise.all([
+  const [instances, xml, stats, historyCounts] = await Promise.all([
     loadInstances(def.id),
     loadDiagram(def.id),
     loadActivityStatistics(def.id),
+    heatMode === "history" ? loadHistoricActivityCounts(def.id) : Promise.resolve({} as Record<string, number>),
   ]);
   const badges = buildBadges(stats);
-  const heatmap = buildHeatmap(stats);
+  const heatmap = heatMode === "history" ? normalizeToHeatmap(historyCounts) : runtimeHeatmap(stats);
   const totalIncidents = stats.reduce(
     (sum, s) => sum + (s.incidents?.reduce((a, b) => a + b.incidentCount, 0) ?? 0),
     0,
@@ -153,9 +191,10 @@ export default async function ProcessDefinitionPage({ params }: { params: Promis
               {def.suspended ? " · suspended" : ""}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <Badge variant="secondary">{instances.length} recent instances</Badge>
             {totalIncidents > 0 ? <Badge variant="destructive">{totalIncidents} incidents</Badge> : null}
+            <StartProcessButton defaultKey={def.key} variant="default" size="sm" />
           </div>
         </div>
       </div>
@@ -163,10 +202,29 @@ export default async function ProcessDefinitionPage({ params }: { params: Promis
       {xml ? (
         <Card>
           <CardHeader>
-            <CardTitle>Diagram</CardTitle>
-            <CardDescription>
-              Instance counts bottom-left · incident counts top-right · heatmap overlay weighted by per-activity instance share.
-            </CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle>Diagram</CardTitle>
+                <CardDescription>
+                  Instance counts bottom-left · incident counts top-right · heatmap weighted by{" "}
+                  {heatMode === "history" ? "all-time" : "currently running"} activity instances.
+                </CardDescription>
+              </div>
+              <div className="bg-muted text-muted-foreground inline-flex items-center rounded-md p-0.5 text-xs">
+                <Link
+                  href={`/cockpit/processes/${encodeURIComponent(def.key)}`}
+                  className={`rounded-sm px-2.5 py-1 ${heatMode === "runtime" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"}`}
+                >
+                  Runtime
+                </Link>
+                <Link
+                  href={`/cockpit/processes/${encodeURIComponent(def.key)}?heat=history`}
+                  className={`rounded-sm px-2.5 py-1 ${heatMode === "history" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"}`}
+                >
+                  All-time
+                </Link>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <BpmnViewer xml={xml} height={460} badges={badges} heatmap={heatmap} />

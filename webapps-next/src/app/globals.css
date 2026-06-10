@@ -12,6 +12,23 @@
 @import "dmn-js/dist/assets/dmn-js-literal-expression.css";
 @import "dmn-js/dist/assets/dmn-font/css/dmn-embedded.css";
 
+/* form-js viewer styles — renderer is dynamically imported in task-form-internal.tsx */
+@import "@bpmn-io/form-js/dist/assets/form-js-base.css";
+@import "@bpmn-io/form-js/dist/assets/form-js.css";
+
+/* form-js renders a "Powered by bpmn.io" link as a virtual form field.
+   Hide it so the watermark doesn't leak into the task action area. */
+.fjs-container .fjs-powered-by {
+  display: none !important;
+}
+
+/* diagram-js (bpmn-js + dmn-js) injects a "Powered by bpmn.io" anchor positioned
+   absolute bottom-right of every viewer. Hide it across the app. */
+a.bjs-powered-by,
+.bjs-powered-by {
+  display: none !important;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -139,6 +156,50 @@ These serve as the fallback; there is no separate default.css file. */
     @apply bg-background text-foreground;
     font-family: var(--font-sans), system-ui, sans-serif;
   }
+}
+
+/* Theme presets — toggled by `<html data-theme-preset="...">`, set from the
+   Preferences popover. Each preset re-tints the accent + ring + sidebar-primary
+   (and for Brutalist, also flattens radius and shadows) without touching the
+   surface colors so the rest of the UI stays calm. */
+[data-theme-preset="brutalist"] {
+  --primary: oklch(0.22 0 0);
+  --primary-foreground: oklch(0.99 0 0);
+  --ring: oklch(0.22 0 0);
+  --sidebar-primary: oklch(0.22 0 0);
+  --radius: 0.125rem;
+}
+[data-theme-preset="brutalist"] .dark {
+  --primary: oklch(0.92 0 0);
+  --primary-foreground: oklch(0.15 0 0);
+  --ring: oklch(0.92 0 0);
+  --sidebar-primary: oklch(0.92 0 0);
+}
+[data-theme-preset="soft-pop"] {
+  --primary: oklch(0.78 0.15 350);
+  --primary-foreground: oklch(0.2 0.05 350);
+  --ring: oklch(0.78 0.15 350);
+  --sidebar-primary: oklch(0.78 0.15 350);
+  --radius: 0.875rem;
+}
+[data-theme-preset="tangerine"] {
+  --primary: oklch(0.72 0.18 55);
+  --primary-foreground: oklch(0.2 0.05 55);
+  --ring: oklch(0.72 0.18 55);
+  --sidebar-primary: oklch(0.72 0.18 55);
+}
+
+/* Page layout — Centered caps body content width; Full Width lets it fill. */
+html[data-layout="centered"] .app-layout-content {
+  margin-inline: auto;
+  max-width: 80rem;
+}
+
+/* Navbar behavior — Sticky keeps the header pinned, Scroll lets it move. */
+html[data-navbar="sticky"] .app-layout-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
 }
 
 @layer utilities {
@@ -433,7 +494,11 @@ html {
   color: var(--muted-foreground);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s, background 0.15s, color 0.15s, box-shadow 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s,
+    box-shadow 0.15s;
   box-shadow: 0 1px 3px oklch(0 0 0 / 0.1);
 }
 
@@ -468,7 +533,9 @@ html {
   border-radius: 4px;
 }
 
-.schedule-calendar-wrapper .rbc-row-content-scrollable .rbc-row-content-scroll-container::-webkit-scrollbar-thumb:hover {
+.schedule-calendar-wrapper
+  .rbc-row-content-scrollable
+  .rbc-row-content-scroll-container::-webkit-scrollbar-thumb:hover {
   background: color-mix(in oklch, var(--foreground) 35%, transparent);
 }
 
@@ -568,7 +635,10 @@ html {
   border-radius: calc(var(--radius) - 2px);
   font-size: 12px;
   line-height: 1.4;
-  transition: filter 0.12s, box-shadow 0.12s, transform 0.12s;
+  transition:
+    filter 0.12s,
+    box-shadow 0.12s,
+    transform 0.12s;
 }
 
 .schedule-calendar-wrapper .rbc-event:focus {

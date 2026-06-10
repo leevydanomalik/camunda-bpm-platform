@@ -230,11 +230,54 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
       };
       const scale = ctm.a || 1;
 
+      // Build a structural-propagation heatmap: BPMN runtime stats only assign
+      // weights to nodes that currently hold instances (user tasks waiting,
+      // jobs queued). Gateways, events, and downstream tasks are all 0, so the
+      // visualization breaks at every transition. Walk the sequence-flow graph
+      // outward from each hot node in both directions, attenuating per hop,
+      // and merge the inferred values with the raw heatmap. The result is a
+      // continuous gradient that shows where the process flow is heading
+      // (forward) and where it came from (backward), peaked at the real hot
+      // spots.
+      const all = elementRegistry.getAll();
+      const fwd: Record<string, string[]> = {};
+      const bwd: Record<string, string[]> = {};
+      for (const el of all) {
+        const srcId = el.source?.id ?? el.businessObject?.sourceRef?.id;
+        const tgtId = el.target?.id ?? el.businessObject?.targetRef?.id;
+        if (!srcId || !tgtId) continue;
+        (fwd[srcId] ??= []).push(tgtId);
+        (bwd[tgtId] ??= []).push(srcId);
+      }
+      const ATTENUATION = 0.6; // per-hop heat decay
+      const MIN_HEAT = 0.05; // values below this are not visible — stop BFS
+      const effective: Record<string, number> = {};
+      for (const [id, raw] of Object.entries(heatmap)) {
+        const v = Math.min(1, Math.max(0, raw));
+        if (v > 0) effective[id] = Math.max(effective[id] ?? 0, v);
+      }
+      const queue: Array<{ id: string; level: number; dir: "fwd" | "bwd" }> = [];
+      for (const [id, v] of Object.entries(effective)) {
+        queue.push({ id, level: v, dir: "fwd" }, { id, level: v, dir: "bwd" });
+      }
+      while (queue.length > 0) {
+        const node = queue.shift() as { id: string; level: number; dir: "fwd" | "bwd" };
+        const next = node.level * ATTENUATION;
+        if (next < MIN_HEAT) continue;
+        const neighbors = node.dir === "fwd" ? fwd[node.id] : bwd[node.id];
+        if (!neighbors) continue;
+        for (const nId of neighbors) {
+          if ((effective[nId] ?? 0) >= next) continue;
+          effective[nId] = next;
+          queue.push({ id: nId, level: next, dir: node.dir });
+        }
+      }
+
       // Element centers (primary heat) and corridor points (secondary, attenuated).
       const elementPts: Array<{ x: number; y: number; v: number; w: number; h: number }> = [];
       const corridorPts: Array<{ x: number; y: number; v: number }> = [];
 
-      for (const [id, raw] of Object.entries(heatmap)) {
+      for (const [id, raw] of Object.entries(effective)) {
         const v = Math.min(1, Math.max(0, raw));
         if (v <= 0) continue;
         const node = svg.querySelector(`[data-element-id="${CSS.escape(id)}"]`) as SVGGraphicsElement | null;
@@ -250,17 +293,21 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
         });
       }
 
-      // Flow corridors — sample every ~22px between rated endpoints.
-      const all = elementRegistry.getAll();
+      // Flow corridors — sample every ~22px along each sequence flow, using
+      // the propagated `effective` heat so paths between distant hot regions
+      // also glow at their inferred intensity.
       for (const el of all) {
         if (!el.waypoints || el.waypoints.length < 2) continue;
         const srcId = el.source?.id ?? el.businessObject?.sourceRef?.id;
         const tgtId = el.target?.id ?? el.businessObject?.targetRef?.id;
         if (!srcId || !tgtId) continue;
-        const srcW = heatmap[srcId];
-        const tgtW = heatmap[tgtId];
-        if (srcW == null || tgtW == null) continue;
-        const corridor = Math.min(1, Math.max(0, Math.min(srcW, tgtW)));
+        const srcW = effective[srcId] ?? 0;
+        const tgtW = effective[tgtId] ?? 0;
+        if (srcW <= 0 && tgtW <= 0) continue;
+        // Both endpoints rated → min (bottleneck-style, matches the
+        // cargotrain reference). One side at 0 → use the rated side.
+        const blend = srcW > 0 && tgtW > 0 ? Math.min(srcW, tgtW) : Math.max(srcW, tgtW);
+        const corridor = Math.min(1, Math.max(0, blend));
         if (corridor <= 0) continue;
 
         const wps = el.waypoints;

@@ -57,10 +57,14 @@ async function load(id: string) {
   try {
     const instance = await engineGet<ProcessInstance>(`/process-instance/${encodeURIComponent(id)}`);
     const [xmlRes, variables, incidents, activityTree] = await Promise.all([
-      engineGet<{ id: string; bpmn20Xml: string }>(`/process-definition/${encodeURIComponent(instance.definitionId)}/xml`),
+      engineGet<{ id: string; bpmn20Xml: string }>(
+        `/process-definition/${encodeURIComponent(instance.definitionId)}/xml`,
+      ),
       engineGet<Record<string, Variable>>(`/process-instance/${encodeURIComponent(id)}/variables`).catch(() => ({})),
       engineGet<Incident[]>(`/incident?processInstanceId=${encodeURIComponent(id)}`).catch(() => []),
-      engineGet<ActivityInstance>(`/process-instance/${encodeURIComponent(id)}/activity-instances`).catch(() => undefined),
+      engineGet<ActivityInstance>(`/process-instance/${encodeURIComponent(id)}/activity-instances`).catch(
+        () => undefined,
+      ),
     ]);
     return {
       instance,
@@ -96,11 +100,7 @@ function formatDate(iso: string): string {
   }
 }
 
-export default async function InstanceDetailPage({
-  params,
-}: {
-  params: Promise<{ key: string; id: string }>;
-}) {
+export default async function InstanceDetailPage({ params }: { params: Promise<{ key: string; id: string }> }) {
   const { key, id } = await params;
   const { instance, xml, variables, incidents, activeActivityIds, error } = await load(id);
 
@@ -122,7 +122,8 @@ export default async function InstanceDetailPage({
               {instance.suspended ? <Badge variant="secondary">Suspended</Badge> : <Badge>Active</Badge>}
               {incidents.length > 0 ? (
                 <Badge variant="destructive">
-                  <AlertTriangle className="mr-1 size-3" /> {incidents.length} incident{incidents.length === 1 ? "" : "s"}
+                  <AlertTriangle className="mr-1 size-3" /> {incidents.length} incident
+                  {incidents.length === 1 ? "" : "s"}
                 </Badge>
               ) : null}
             </div>

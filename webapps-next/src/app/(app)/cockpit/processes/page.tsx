@@ -1,121 +1,147 @@
 import Link from "next/link";
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AlertTriangle, GitBranch, LayoutGrid, List, Play } from "lucide-react";
+
 import { engineGet } from "@/lib/camunda/engine";
+import { cn } from "@/lib/utils";
 
-// Statistics endpoint returns definitions + instance/incident counts in one call,
-// avoiding the N+1 problem of fetching counts per definition.
-type DefinitionStatistic = {
-  id: string;
-  instances: number;
-  failedJobs: number;
-  incidents?: Array<{ incidentType: string; incidentCount: number }>;
-  definition: {
-    id: string;
-    key: string;
-    name: string | null;
-    version: number;
-    tenantId: string | null;
-    versionTag: string | null;
-    suspended: boolean;
-  };
-};
+import { ProcessesCards } from "./_components/processes-cards";
+import { type ProcessDefinitionStat, ProcessesTable } from "./_components/processes-table";
 
-async function loadStatistics(): Promise<{ stats: DefinitionStatistic[]; error: string | null }> {
+type View = "table" | "cards";
+
+async function loadStatistics(): Promise<{ stats: ProcessDefinitionStat[]; error: string | null }> {
   try {
-    const stats = await engineGet<DefinitionStatistic[]>("/process-definition/statistics?incidents=true");
+    const stats = await engineGet<ProcessDefinitionStat[]>("/process-definition/statistics?incidents=true");
     return { stats, error: null };
   } catch (err) {
-    return { stats: [], error: err instanceof Error ? err.message : "Failed to load process definitions" };
+    return {
+      stats: [],
+      error: err instanceof Error ? err.message : "Failed to load process definitions",
+    };
   }
 }
 
-export default async function ProcessesPage() {
+async function loadXml(id: string): Promise<string | null> {
+  try {
+    const r = await engineGet<{ id: string; bpmn20Xml: string }>(`/process-definition/${encodeURIComponent(id)}/xml`);
+    return r.bpmn20Xml ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function loadXmls(ids: string[]): Promise<Record<string, string | null>> {
+  const entries = await Promise.all(ids.map(async (id) => [id, await loadXml(id)] as const));
+  return Object.fromEntries(entries);
+}
+
+export default async function ProcessesPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+  const { view: rawView } = await searchParams;
+  const view: View = rawView === "cards" ? "cards" : "table";
+
   const { stats, error } = await loadStatistics();
 
-  const totalIncidents = stats.reduce(
-    (sum, s) => sum + (s.incidents?.reduce((a, b) => a + b.incidentCount, 0) ?? 0),
-    0,
-  );
+  const totalInstances = stats.reduce((a, s) => a + s.instances, 0);
+  const totalIncidents = stats.reduce((a, s) => a + (s.incidents?.reduce((x, y) => x + y.incidentCount, 0) ?? 0), 0);
+
+  // Cards mode pulls all XMLs in parallel for the thumbnails. Fine for <~50
+  // definitions; if this grows beyond that, switch to client-side lazy loading
+  // via IntersectionObserver.
+  const xmls = view === "cards" ? await loadXmls(stats.map((s) => s.id)) : {};
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Processes</h1>
-          <p className="text-muted-foreground text-sm">
-            All deployed process definitions, latest versions only.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Badge variant="secondary">{stats.length} definitions</Badge>
-          {totalIncidents > 0 ? <Badge variant="destructive">{totalIncidents} incidents</Badge> : null}
-        </div>
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight">Processes</h1>
+        <p className="text-muted-foreground text-sm">All deployed process definitions (latest version, active).</p>
+      </header>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatTile
+          icon={<GitBranch className="text-muted-foreground size-4" />}
+          label="Definitions"
+          value={stats.length}
+        />
+        <StatTile
+          icon={<Play className="text-muted-foreground size-4" />}
+          label="Running instances"
+          value={totalInstances}
+        />
+        <StatTile
+          icon={<AlertTriangle className="text-muted-foreground size-4" />}
+          label="Open incidents"
+          value={totalIncidents}
+          tone={totalIncidents > 0 ? "warning" : "default"}
+        />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Process definitions</CardTitle>
-          <CardDescription>
-            <code className="bg-muted rounded px-1 text-xs">/process-definition/statistics?incidents=true</code>
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          {error ? (
-            <div className="text-destructive p-6 text-sm">Failed to load: {error}</div>
-          ) : stats.length === 0 ? (
-            <div className="text-muted-foreground p-6 text-sm">No process definitions deployed yet.</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Key</TableHead>
-                  <TableHead className="text-right">Version</TableHead>
-                  <TableHead>Tenant</TableHead>
-                  <TableHead className="text-right">Running</TableHead>
-                  <TableHead className="text-right">Incidents</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {stats.map((s) => {
-                  const incidentCount = s.incidents?.reduce((a, b) => a + b.incidentCount, 0) ?? 0;
-                  return (
-                    <TableRow key={s.id}>
-                      <TableCell className="font-medium">
-                        <Link
-                          href={`/cockpit/processes/${encodeURIComponent(s.definition.key)}`}
-                          className="hover:underline"
-                        >
-                          {s.definition.name ?? s.definition.key}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">{s.definition.key}</TableCell>
-                      <TableCell className="text-right">
-                        {s.definition.version}
-                        {s.definition.versionTag ? (
-                          <span className="text-muted-foreground ml-1 text-xs">({s.definition.versionTag})</span>
-                        ) : null}
-                      </TableCell>
-                      <TableCell>{s.definition.tenantId ?? "—"}</TableCell>
-                      <TableCell className="text-right tabular-nums">{s.instances}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {incidentCount > 0 ? (
-                          <span className="text-destructive font-medium">{incidentCount}</span>
-                        ) : (
-                          0
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+      <div className="bg-muted text-muted-foreground inline-flex items-center rounded-md p-0.5 text-xs">
+        <ViewLink view="table" current={view}>
+          <List className="size-3.5" /> Table
+        </ViewLink>
+        <ViewLink view="cards" current={view}>
+          <LayoutGrid className="size-3.5" /> Cards
+        </ViewLink>
+      </div>
+
+      {error ? (
+        <div className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border p-4 text-sm">
+          Failed to load: {error}
+        </div>
+      ) : stats.length === 0 ? (
+        <div className="text-muted-foreground rounded-md border border-dashed p-8 text-center text-sm">
+          No process definitions deployed yet.
+        </div>
+      ) : view === "cards" ? (
+        <ProcessesCards stats={stats} xmls={xmls} />
+      ) : (
+        <ProcessesTable stats={stats} />
+      )}
+    </div>
+  );
+}
+
+function ViewLink({ view, current, children }: { view: View; current: View; children: React.ReactNode }) {
+  const isActive = current === view;
+  return (
+    <Link
+      href={view === "table" ? "/cockpit/processes" : `/cockpit/processes?view=${view}`}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1",
+        isActive ? "bg-background text-foreground shadow-sm" : "hover:text-foreground",
+      )}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function StatTile({
+  icon,
+  label,
+  value,
+  tone = "default",
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  tone?: "default" | "warning";
+}) {
+  return (
+    <div className="bg-card flex items-center justify-between rounded-md border px-4 py-3">
+      <div className="space-y-0.5">
+        <div className="text-muted-foreground text-xs">{label}</div>
+        <div
+          className={cn(
+            "text-2xl font-semibold tabular-nums",
+            tone === "warning" && value > 0 ? "text-destructive" : "",
           )}
-        </CardContent>
-      </Card>
+        >
+          {new Intl.NumberFormat().format(value)}
+        </div>
+      </div>
+      <div className="bg-muted text-muted-foreground flex size-9 items-center justify-center rounded-md">{icon}</div>
     </div>
   );
 }

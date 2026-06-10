@@ -1,89 +1,74 @@
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { GitBranch, Table2 } from "lucide-react";
+
 import { engineGet } from "@/lib/camunda/engine";
 
-type DecisionDefinition = {
-  id: string;
-  key: string;
-  name: string | null;
-  category: string | null;
-  version: number;
-  tenantId: string | null;
-  versionTag: string | null;
-  resource: string;
-  decisionRequirementsDefinitionKey: string | null;
-};
+import { type DecisionDefinitionRow, DecisionsTable } from "./_components/decisions-table";
 
-async function loadDefinitions(): Promise<{ defs: DecisionDefinition[]; error: string | null }> {
+async function loadDefinitions(): Promise<{
+  defs: DecisionDefinitionRow[];
+  error: string | null;
+}> {
   try {
-    const defs = await engineGet<DecisionDefinition[]>(
+    const defs = await engineGet<DecisionDefinitionRow[]>(
       "/decision-definition?latestVersion=true&sortBy=name&sortOrder=asc",
     );
     return { defs, error: null };
   } catch (err) {
-    return { defs: [], error: err instanceof Error ? err.message : "Failed to load decision definitions" };
+    return {
+      defs: [],
+      error: err instanceof Error ? err.message : "Failed to load decision definitions",
+    };
   }
 }
 
 export default async function DecisionsPage() {
   const { defs, error } = await loadDefinitions();
 
+  const drdCount = new Set(defs.map((d) => d.decisionRequirementsDefinitionKey).filter(Boolean) as string[]).size;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Decisions</h1>
-          <p className="text-muted-foreground text-sm">
-            DMN decision definitions, latest versions only.
-          </p>
-        </div>
-        <Badge variant="secondary">{defs.length} definitions</Badge>
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight">Decisions</h1>
+        <p className="text-muted-foreground text-sm">DMN decision definitions (latest version, sorted by name).</p>
+      </header>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <StatTile
+          icon={<Table2 className="text-muted-foreground size-4" />}
+          label="Decision definitions"
+          value={defs.length}
+        />
+        <StatTile
+          icon={<GitBranch className="text-muted-foreground size-4" />}
+          label="Decision requirement diagrams"
+          value={drdCount}
+        />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Decision definitions</CardTitle>
-          <CardDescription>
-            <code className="bg-muted rounded px-1 text-xs">/decision-definition?latestVersion=true</code>
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          {error ? (
-            <div className="text-destructive p-6 text-sm">Failed to load: {error}</div>
-          ) : defs.length === 0 ? (
-            <div className="text-muted-foreground p-6 text-sm">No decision definitions deployed.</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Key</TableHead>
-                  <TableHead>DRD</TableHead>
-                  <TableHead className="text-right">Version</TableHead>
-                  <TableHead>Tenant</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {defs.map((d) => (
-                  <TableRow key={d.id}>
-                    <TableCell className="font-medium">{d.name ?? d.key}</TableCell>
-                    <TableCell className="font-mono text-xs">{d.key}</TableCell>
-                    <TableCell className="font-mono text-xs">{d.decisionRequirementsDefinitionKey ?? "—"}</TableCell>
-                    <TableCell className="text-right">
-                      {d.version}
-                      {d.versionTag ? (
-                        <span className="text-muted-foreground ml-1 text-xs">({d.versionTag})</span>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>{d.tenantId ?? "—"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {error ? (
+        <div className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border p-4 text-sm">
+          Failed to load: {error}
+        </div>
+      ) : defs.length === 0 ? (
+        <div className="text-muted-foreground rounded-md border border-dashed p-8 text-center text-sm">
+          No decision definitions deployed yet.
+        </div>
+      ) : (
+        <DecisionsTable defs={defs} />
+      )}
+    </div>
+  );
+}
+
+function StatTile({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+  return (
+    <div className="bg-card flex items-center justify-between rounded-md border px-4 py-3">
+      <div className="space-y-0.5">
+        <div className="text-muted-foreground text-xs">{label}</div>
+        <div className="text-2xl font-semibold tabular-nums">{new Intl.NumberFormat().format(value)}</div>
+      </div>
+      <div className="bg-muted text-muted-foreground flex size-9 items-center justify-center rounded-md">{icon}</div>
     </div>
   );
 }
