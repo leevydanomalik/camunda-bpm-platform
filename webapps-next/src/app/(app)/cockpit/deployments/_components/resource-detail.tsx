@@ -1,7 +1,10 @@
+import Link from "next/link";
+
 import { Download, FileText, MousePointerClick, Tag } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { engineFetch, engineGet } from "@/lib/camunda/engine";
 
 import { ResourceBpmn, ResourceDmn } from "./resource-diagram";
@@ -84,6 +87,40 @@ async function loadDecisionDefinitions(deploymentId: string): Promise<DecisionDe
   }
 }
 
+/** Running process-instance count per definition id (matches Cockpit's "Instance Counts"). */
+async function loadProcessInstanceCounts(defs: ProcessDefinition[]): Promise<Record<string, number>> {
+  const entries = await Promise.all(
+    defs.map(async (d) => {
+      try {
+        const r = await engineGet<{ count: number }>(
+          `/process-instance/count?processDefinitionId=${encodeURIComponent(d.id)}`,
+        );
+        return [d.id, r.count] as const;
+      } catch {
+        return [d.id, 0] as const;
+      }
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+
+/** Historic decision-instance (evaluation) count per definition id. */
+async function loadDecisionInstanceCounts(defs: DecisionDefinition[]): Promise<Record<string, number>> {
+  const entries = await Promise.all(
+    defs.map(async (d) => {
+      try {
+        const r = await engineGet<{ count: number }>(
+          `/history/decision-instance/count?decisionDefinitionId=${encodeURIComponent(d.id)}`,
+        );
+        return [d.id, r.count] as const;
+      } catch {
+        return [d.id, 0] as const;
+      }
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+
 export function ResourceDetailEmpty({ hasDeployment }: { hasDeployment: boolean }) {
   return (
     <div className="flex h-full flex-col">
@@ -138,8 +175,18 @@ export async function ResourceDetail({ deploymentId, resourceId }: { deploymentI
     kind === "dmn" ? loadDecisionDefinitions(deploymentId) : Promise.resolve([] as DecisionDefinition[]),
   ]);
 
-  const matchedProcess = processDefs.find((p) => p.resource === meta.name);
-  const matchedDecision = decisionDefs.find((d) => d.resource === meta.name);
+  // Definitions declared by *this* resource file (a single BPMN/DMN file can
+  // hold more than one definition, e.g. a collaboration).
+  const resourceProcessDefs = processDefs.filter((p) => p.resource === meta.name);
+  const resourceDecisionDefs = decisionDefs.filter((d) => d.resource === meta.name);
+  const matchedProcess = resourceProcessDefs[0];
+  const matchedDecision = resourceDecisionDefs[0];
+
+  const [processCounts, decisionCounts] = await Promise.all([
+    resourceProcessDefs.length > 0 ? loadProcessInstanceCounts(resourceProcessDefs) : Promise.resolve({}),
+    resourceDecisionDefs.length > 0 ? loadDecisionInstanceCounts(resourceDecisionDefs) : Promise.resolve({}),
+  ]);
+
   const downloadHref = `/api/engine/deployment/${encodeURIComponent(deploymentId)}/resources/${encodeURIComponent(resourceId)}/data`;
 
   return (
@@ -181,7 +228,7 @@ export async function ResourceDetail({ deploymentId, resourceId }: { deploymentI
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
         {content === null ? (
           <div className="text-muted-foreground rounded-md border border-dashed p-6 text-center text-sm">
             Failed to load resource content.
@@ -193,8 +240,69 @@ export async function ResourceDetail({ deploymentId, resourceId }: { deploymentI
         ) : (
           <SourceBlock filename={file} content={content} />
         )}
+
+        {resourceProcessDefs.length > 0 ? (
+          <DefinitionsTable
+            countLabel="Instance Counts"
+            rows={resourceProcessDefs.map((d) => ({
+              id: d.id,
+              key: d.key,
+              name: d.name ?? d.key,
+              count: processCounts[d.id] ?? 0,
+              href: `/cockpit/processes/${encodeURIComponent(d.key)}`,
+            }))}
+          />
+        ) : null}
+
+        {resourceDecisionDefs.length > 0 ? (
+          <DefinitionsTable
+            countLabel="Evaluations"
+            rows={resourceDecisionDefs.map((d) => ({
+              id: d.id,
+              key: d.key,
+              name: d.name ?? d.key,
+              count: decisionCounts[d.id] ?? 0,
+              href: `/cockpit/decisions/${encodeURIComponent(d.key)}`,
+            }))}
+          />
+        ) : null}
       </div>
     </div>
+  );
+}
+
+type DefinitionRow = { id: string; key: string; name: string; count: number; href: string };
+
+/** The "Definitions" table Cockpit shows below a deployed resource's diagram. */
+function DefinitionsTable({ rows, countLabel }: { rows: DefinitionRow[]; countLabel: string }) {
+  return (
+    <section className="space-y-2">
+      <h3 className="text-sm font-semibold tracking-tight">Definitions</h3>
+      <div className="overflow-hidden rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="h-8">Name</TableHead>
+              <TableHead className="h-8">Key</TableHead>
+              <TableHead className="h-8 text-right">{countLabel}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => (
+              <TableRow key={r.id}>
+                <TableCell className="py-1.5">
+                  <Link href={r.href} className="text-primary/90 hover:text-primary font-medium hover:underline">
+                    {r.name}
+                  </Link>
+                </TableCell>
+                <TableCell className="text-muted-foreground py-1.5 font-mono text-xs">{r.key}</TableCell>
+                <TableCell className="py-1.5 text-right tabular-nums">{r.count}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </section>
   );
 }
 

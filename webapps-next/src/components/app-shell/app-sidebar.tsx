@@ -48,7 +48,7 @@ export function AppSidebar({
                   <Workflow className="size-4" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">Camunda</span>
+                  <span className="truncate font-semibold">DEEPFLOW</span>
                   <span className="text-muted-foreground truncate text-xs">Platform 7.24</span>
                 </div>
               </Link>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { Bell, Building2, CalendarPlus, ExternalLink, FileText, Layers, MousePointerClick, User } from "lucide-react";
+import { Building2, CalendarPlus, ExternalLink, FileText, Layers, MousePointerClick, User } from "lucide-react";
 
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -9,8 +9,11 @@ import { engineGet } from "@/lib/camunda/engine";
 
 import { TaskActions } from "./task-actions";
 import { type Comment, TaskComments } from "./task-comments";
+import { TaskDateEditors } from "./task-date-editors";
 import { TaskDiagram } from "./task-diagram";
 import { TaskForm } from "./task-form";
+import { TaskGenericForm } from "./task-generic-form";
+import { type HistoryEvent, TaskHistory } from "./task-history";
 
 type TaskDto = {
   id: string;
@@ -42,21 +45,6 @@ function formatValue(v: Variable): string {
   if (v.value === null || v.value === undefined) return "null";
   if (typeof v.value === "object") return JSON.stringify(v.value);
   return String(v.value);
-}
-
-function relativeDate(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = d.getTime() - now.getTime();
-  const future = diffMs > 0;
-  const absDays = Math.abs(diffMs) / (1000 * 60 * 60 * 24);
-  if (absDays < 1) {
-    const hours = Math.round(Math.abs(diffMs) / (1000 * 60 * 60));
-    return future ? `in ${hours}h` : `${hours}h ago`;
-  }
-  const days = Math.round(absDays);
-  return future ? `in ${days} day${days === 1 ? "" : "s"}` : `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
 async function loadTask(id: string): Promise<TaskDto | null> {
@@ -118,6 +106,73 @@ async function loadProcessXml(definitionId: string | null): Promise<string | nul
   }
 }
 
+async function loadBusinessKey(processInstanceId: string | null): Promise<string | null> {
+  if (!processInstanceId) return null;
+  try {
+    const pi = await engineGet<{ businessKey: string | null }>(
+      `/process-instance/${encodeURIComponent(processInstanceId)}`,
+    );
+    return pi.businessKey ?? null;
+  } catch {
+    return null;
+  }
+}
+
+type IdentityLinkLog = {
+  time: string;
+  type: "add" | "delete";
+  userId?: string | null;
+  groupId?: string | null;
+  operationType?: string | null;
+};
+type HistoricDetail = { time: string; variableName?: string | null; type?: string | null };
+type HistoricTask = { startTime?: string | null; endTime?: string | null; deleteReason?: string | null };
+
+/** Build the task audit timeline from the engine's history endpoints. */
+async function loadHistory(taskId: string): Promise<HistoryEvent[]> {
+  const events: HistoryEvent[] = [];
+  const q = `taskId=${encodeURIComponent(taskId)}`;
+
+  const [tasks, links, details] = await Promise.all([
+    engineGet<HistoricTask[]>(`/history/task?${q}`).catch(() => [] as HistoricTask[]),
+    engineGet<IdentityLinkLog[]>(`/history/identity-link-log?${q}`).catch(() => [] as IdentityLinkLog[]),
+    engineGet<HistoricDetail[]>(`/history/detail?${q}`).catch(() => [] as HistoricDetail[]),
+  ]);
+
+  const t = tasks[0];
+  if (t?.startTime) events.push({ time: t.startTime, action: "Created" });
+  if (t?.endTime) events.push({ time: t.endTime, action: t.deleteReason === "completed" ? "Completed" : "Ended" });
+
+  for (const l of links) {
+    if (!l.time) continue;
+    const added = l.type === "add";
+    if (l.operationType === "claim" || (l.userId && l.operationType === "setAssignee")) {
+      events.push({ time: l.time, action: added ? "Claimed" : "Unclaimed", detail: l.userId ?? null });
+    } else if (l.groupId) {
+      events.push({
+        time: l.time,
+        action: added ? "Candidate group added" : "Candidate group removed",
+        detail: l.groupId,
+      });
+    } else if (l.userId) {
+      events.push({
+        time: l.time,
+        action: added ? "Candidate user added" : "Candidate user removed",
+        detail: l.userId,
+      });
+    }
+  }
+
+  for (const d of details) {
+    if (!d.time) continue;
+    if (d.type === "variableUpdate" || d.variableName) {
+      events.push({ time: d.time, action: "Variable set", detail: d.variableName ?? null });
+    }
+  }
+
+  return events.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+}
+
 export function TaskDetailEmptyState() {
   return (
     <div className="flex h-full flex-col">
@@ -161,12 +216,14 @@ export async function TaskDetailPane({ taskId, username }: { taskId: string; use
     );
   }
 
-  const [variables, comments, form, processXml, identity] = await Promise.all([
+  const [variables, comments, form, processXml, identity, businessKey, history] = await Promise.all([
     loadVariables(taskId),
     loadComments(taskId),
     loadForm(taskId),
     loadProcessXml(task.processDefinitionId),
     loadIdentityLinks(taskId),
+    loadBusinessKey(task.processInstanceId),
+    loadHistory(taskId),
   ]);
 
   const initialFormData: Record<string, unknown> = {};
@@ -174,7 +231,11 @@ export async function TaskDetailPane({ taskId, username }: { taskId: string; use
 
   const pKey = processKey(task.processDefinitionId);
   const variableCount = Object.keys(variables).length;
-  const defaultTab = form ? "form" : processXml ? "diagram" : "variables";
+  // Every task gets a Form tab: a deployed form when one exists, otherwise the
+  // generic variable form (matches legacy Tasklist). The form owns "Complete".
+  const hasForm = true;
+  const isAssignedToMe = task.assignee === username;
+  const defaultTab = "form";
   const groupsLabel = identity.groups.length > 0 ? identity.groups.join(", ") : null;
 
   return (
@@ -219,30 +280,7 @@ export async function TaskDetailPane({ taskId, username }: { taskId: string; use
         </div>
 
         <ul className="text-muted-foreground flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12px]">
-          <li className="inline-flex items-center gap-1.5">
-            <CalendarPlus className="size-3.5" />
-            <span>
-              {task.followUp ? (
-                <>
-                  Follow-up <span className="text-foreground/80">{relativeDate(task.followUp)}</span>
-                </>
-              ) : (
-                <span className="text-muted-foreground/80">Set follow-up date</span>
-              )}
-            </span>
-          </li>
-          <li className="inline-flex items-center gap-1.5">
-            <Bell className="size-3.5" />
-            <span>
-              {task.due ? (
-                <>
-                  Due <span className="text-foreground/80">{relativeDate(task.due)}</span>
-                </>
-              ) : (
-                <span className="text-muted-foreground/80">No due date</span>
-              )}
-            </span>
-          </li>
+          <TaskDateEditors taskId={task.id} due={task.due} followUp={task.followUp} />
           {groupsLabel ? (
             <li className="inline-flex items-center gap-1.5">
               <Layers className="size-3.5" />
@@ -261,13 +299,13 @@ export async function TaskDetailPane({ taskId, username }: { taskId: string; use
           </li>
         </ul>
 
-        <TaskActions taskId={task.id} assignee={task.assignee} username={username} hasForm={Boolean(form)} />
+        <TaskActions taskId={task.id} assignee={task.assignee} username={username} hasForm={hasForm} />
       </header>
 
       <Tabs defaultValue={defaultTab} className="flex min-h-0 flex-1 flex-col">
         <div className="bg-background px-6 pt-3">
           <TabsList>
-            {form ? <TabsTrigger value="form">Form</TabsTrigger> : null}
+            <TabsTrigger value="form">Form</TabsTrigger>
             {processXml ? <TabsTrigger value="diagram">Diagram</TabsTrigger> : null}
             <TabsTrigger value="variables">
               Variables
@@ -277,15 +315,27 @@ export async function TaskDetailPane({ taskId, username }: { taskId: string; use
               Comments
               <span className="text-muted-foreground/80 ml-1 tabular-nums">{comments.length}</span>
             </TabsTrigger>
+            <TabsTrigger value="history">
+              History
+              <span className="text-muted-foreground/80 ml-1 tabular-nums">{history.length}</span>
+            </TabsTrigger>
+            <TabsTrigger value="description">Description</TabsTrigger>
           </TabsList>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {form ? (
-            <TabsContent value="form" className="px-6 py-5">
+          <TabsContent value="form" className="px-6 py-5">
+            {form ? (
               <TaskForm taskId={task.id} schema={form} initialData={initialFormData} />
-            </TabsContent>
-          ) : null}
+            ) : (
+              <TaskGenericForm
+                taskId={task.id}
+                businessKey={businessKey}
+                initialVariables={variables}
+                canComplete={isAssignedToMe}
+              />
+            )}
+          </TabsContent>
 
           {processXml ? (
             <TabsContent value="diagram" className="px-6 py-5">
@@ -329,6 +379,20 @@ export async function TaskDetailPane({ taskId, username }: { taskId: string; use
 
           <TabsContent value="comments" id="comments" className="px-6 py-5">
             <TaskComments taskId={task.id} comments={comments} />
+          </TabsContent>
+
+          <TabsContent value="history" className="px-6 py-5">
+            <TaskHistory events={history} />
+          </TabsContent>
+
+          <TabsContent value="description" className="px-6 py-5">
+            {task.description ? (
+              <p className="text-foreground/90 max-w-prose text-sm whitespace-pre-wrap">{task.description}</p>
+            ) : (
+              <p className="text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-xs">
+                This task has no description.
+              </p>
+            )}
           </TabsContent>
         </div>
       </Tabs>

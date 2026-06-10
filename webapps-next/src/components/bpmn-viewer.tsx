@@ -62,6 +62,26 @@ export type BpmnViewerProps = {
 const HIGHLIGHT_MARKER = "cam-active";
 const BADGE_OVERLAY_TYPE = "activity-badge";
 
+// bpmn-js bakes two hard-coded inline fills onto every shape/label: white
+// (shape bodies + task-icon backdrops) and #22242a (label text + task glyphs).
+// CSS can't reliably beat an inline style across bpmn-js versions, so we remap
+// those two literals to live CSS custom properties (defined on .djs-container in
+// globals.css). Because the value becomes a var(), a light/dark switch re-themes
+// the diagram with no JS re-run.
+//   white   → --bpmn-surface   #22242a → --bpmn-ink
+const SURFACE_FILLS = new Set(["white", "rgb(255,255,255)", "#fff", "#ffffff"]);
+const INK_FILLS = new Set(["rgb(34,36,42)", "#22242a"]);
+
+function applyDiagramTheme(host: HTMLElement | null) {
+  const svg = host?.querySelector("svg");
+  if (!svg) return;
+  for (const el of svg.querySelectorAll<SVGElement>("[style*='fill']")) {
+    const fill = (el.style.fill || "").toLowerCase().replace(/\s+/g, "");
+    if (SURFACE_FILLS.has(fill)) el.style.fill = "var(--bpmn-surface)";
+    else if (INK_FILLS.has(fill)) el.style.fill = "var(--bpmn-ink)";
+  }
+}
+
 // ── Heat LUT (cold purple → hot red) — same stops as cargotrain reference ──
 const HEAT_STOPS: Array<{ t: number; rgb: [number, number, number] }> = [
   { t: 0.0, rgb: [63, 0, 189] },
@@ -125,6 +145,9 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
 
         const canvas = viewer.get<BpmnCanvas>("canvas");
         canvas.zoom("fit-viewport", "auto");
+
+        // Remap bpmn-js's baked-in white/#22242a fills to theme vars.
+        applyDiagramTheme(host);
 
         if (activityIds && activityIds.length > 0) {
           for (const id of activityIds) {

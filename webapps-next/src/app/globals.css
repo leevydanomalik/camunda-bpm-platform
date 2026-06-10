@@ -1235,24 +1235,50 @@ html {
 }
 
 /* =====================================================
-   bpmn-js – Theme-aware stroke overrides
-   Only strokes follow the theme — fills, text, and task
-   icons stay at bpmn-js defaults by design.
+   bpmn-js / dmn-js – Theme-aware diagram
+   bpmn-js paints shapes/labels with two hard-coded inline
+   colors: white (shape bodies + task-icon backdrops) and
+   #22242a (labels + task glyphs). bpmn-viewer.tsx remaps
+   those two literals to the two custom props below right
+   after importXML, so a light/dark switch re-themes the
+   diagram live (var() stays reactive). Strokes + arrowheads
+   are themed here directly via CSS.
+   Scoped to .djs-container so it covers every viewer
+   (tasklist, cockpit, deployments, DMN DRD).
    ====================================================== */
 
-.bpmn-viewer-wrapper .djs-visual > rect,
-.bpmn-viewer-wrapper .djs-visual > circle,
-.bpmn-viewer-wrapper .djs-visual > polygon,
-.bpmn-viewer-wrapper .djs-visual > path {
+.djs-container {
+  /* Light: pure white nodes (matches classic Camunda). */
+  --bpmn-surface: var(--card);
+  /* Ink for labels + task glyphs. */
+  --bpmn-ink: var(--foreground);
+}
+
+/* Dark: lift nodes a hair off the canvas so they don't melt into the bg. */
+.dark .djs-container {
+  --bpmn-surface: color-mix(in oklch, var(--card), var(--foreground) 9%);
+}
+
+/* Let the app surface show through — kill bpmn-js's implicit white canvas. */
+.djs-container,
+.bjs-container {
+  background: transparent !important;
+}
+
+/* Strokes follow the theme (fills are remapped in JS — see applyDiagramTheme). */
+.djs-container .djs-visual > rect,
+.djs-container .djs-visual > circle,
+.djs-container .djs-visual > polygon,
+.djs-container .djs-visual > path {
   stroke: var(--foreground) !important;
 }
 
 /* Sequence-flow arrowheads live in <defs><marker>; stroke + tip fill both
    need the theme color so the arrow head doesn't vanish against the canvas. */
-.bpmn-viewer-wrapper marker path,
-.bpmn-viewer-wrapper marker polyline,
-.bpmn-viewer-wrapper marker polygon,
-.bpmn-viewer-wrapper marker circle {
+.djs-container marker path,
+.djs-container marker polyline,
+.djs-container marker polygon,
+.djs-container marker circle {
   stroke: var(--foreground) !important;
   fill: var(--foreground) !important;
 }
