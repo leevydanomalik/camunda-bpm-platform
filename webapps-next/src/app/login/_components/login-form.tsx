@@ -43,7 +43,9 @@ export function LoginForm() {
       });
 
       if (res.ok) {
-        const next = search.get("next") || "/";
+        const raw = search.get("next");
+        // Land on the Welcome hub by default — deep links (?next=…) still win.
+        const next = raw && raw !== "/" ? raw : "/welcome";
         router.replace(next);
         router.refresh();
         return;
