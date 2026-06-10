@@ -26,13 +26,15 @@ export type ProcessesCardsProps = {
   stats: ProcessDefinitionStat[];
   /** Map of definition id → BPMN XML (server-fetched in parallel). */
   xmls: Record<string, string | null>;
+  /** Right-aligned controls in the search row (e.g. the table/cards toggle). */
+  toolbar?: React.ReactNode;
 };
 
 function incidentCount(s: ProcessDefinitionStat): number {
   return s.incidents?.reduce((a, b) => a + b.incidentCount, 0) ?? 0;
 }
 
-export function ProcessesCards({ stats, xmls }: ProcessesCardsProps) {
+export function ProcessesCards({ stats, xmls, toolbar }: ProcessesCardsProps) {
   const [q, setQ] = useState("");
 
   const filtered = useMemo(() => {
@@ -64,6 +66,7 @@ export function ProcessesCards({ stats, xmls }: ProcessesCardsProps) {
         <span className="text-muted-foreground text-xs">
           Showing {filtered.length} of {stats.length}
         </span>
+        {toolbar ? <div className="ml-auto">{toolbar}</div> : null}
       </div>
 
       {filtered.length === 0 ? (
@@ -82,7 +85,7 @@ export function ProcessesCards({ stats, xmls }: ProcessesCardsProps) {
               >
                 <div className="bg-muted/20 relative h-40 border-b">
                   {xml ? (
-                    <BpmnThumbnail xml={xml} height={160} />
+                    <BpmnThumbnail xml={xml} height={160} controls={false} />
                   ) : (
                     <div className="text-muted-foreground/60 flex h-full items-center justify-center text-xs">
                       Diagram unavailable

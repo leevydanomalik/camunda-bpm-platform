@@ -76,15 +76,6 @@ export default async function ProcessesPage({ searchParams }: { searchParams: Pr
         />
       </div>
 
-      <div className="bg-muted text-muted-foreground inline-flex items-center rounded-md p-0.5 text-xs">
-        <ViewLink view="table" current={view}>
-          <List className="size-3.5" /> Table
-        </ViewLink>
-        <ViewLink view="cards" current={view}>
-          <LayoutGrid className="size-3.5" /> Cards
-        </ViewLink>
-      </div>
-
       {error ? (
         <div className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border p-4 text-sm">
           Failed to load: {error}
@@ -94,10 +85,23 @@ export default async function ProcessesPage({ searchParams }: { searchParams: Pr
           No process definitions deployed yet.
         </div>
       ) : view === "cards" ? (
-        <ProcessesCards stats={stats} xmls={xmls} />
+        <ProcessesCards stats={stats} xmls={xmls} toolbar={<ViewToggle current={view} />} />
       ) : (
-        <ProcessesTable stats={stats} />
+        <ProcessesTable stats={stats} toolbar={<ViewToggle current={view} />} />
       )}
+    </div>
+  );
+}
+
+function ViewToggle({ current }: { current: View }) {
+  return (
+    <div className="bg-muted text-muted-foreground inline-flex items-center rounded-md p-0.5 text-xs">
+      <ViewLink view="table" current={current}>
+        <List className="size-3.5" /> Table
+      </ViewLink>
+      <ViewLink view="cards" current={current}>
+        <LayoutGrid className="size-3.5" /> Cards
+      </ViewLink>
     </div>
   );
 }

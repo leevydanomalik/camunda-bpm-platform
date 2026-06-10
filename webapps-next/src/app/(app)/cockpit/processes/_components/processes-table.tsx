@@ -33,7 +33,14 @@ function incidentCount(s: ProcessDefinitionStat): number {
   return s.incidents?.reduce((a, b) => a + b.incidentCount, 0) ?? 0;
 }
 
-export function ProcessesTable({ stats }: { stats: ProcessDefinitionStat[] }) {
+export function ProcessesTable({
+  stats,
+  toolbar,
+}: {
+  stats: ProcessDefinitionStat[];
+  /** Right-aligned controls in the search row (e.g. the table/cards toggle). */
+  toolbar?: React.ReactNode;
+}) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
     key: "instances",
@@ -90,6 +97,7 @@ export function ProcessesTable({ stats }: { stats: ProcessDefinitionStat[] }) {
         <span className="text-muted-foreground text-xs">
           Showing {filtered.length} of {stats.length}
         </span>
+        {toolbar ? <div className="ml-auto">{toolbar}</div> : null}
       </div>
 
       <div className="overflow-hidden rounded-md border">
