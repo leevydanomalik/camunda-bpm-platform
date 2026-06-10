@@ -1284,6 +1284,79 @@ html {
 }
 
 /* =====================================================
+   dmn-js – Theme-aware decision table / literal expression
+   dmn-js renders these as HTML styled via CSS classes (not
+   inline), so theme overrides win cleanly with !important.
+   Scoped to .dmn-viewer-host (the dmn-js container).
+   ====================================================== */
+
+.dmn-viewer-host .dmn-decision-table-container,
+.dmn-viewer-host .dmn-literal-expression-container,
+.dmn-viewer-host .dmn-definitions,
+.dmn-viewer-host .tjs-container,
+.dmn-viewer-host .tjs-table-container,
+.dmn-viewer-host .tjs-table {
+  background-color: var(--card) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+
+/* Every table cell + the table grid lines. */
+.dmn-viewer-host .tjs-table td,
+.dmn-viewer-host .tjs-table th,
+.dmn-viewer-host .tjs-table tr,
+.dmn-viewer-host .cell,
+.dmn-viewer-host .annotation {
+  background-color: var(--card) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+
+/* Header band + column-header cells + the row-index column → elevated. */
+.dmn-viewer-host .decision-table-properties,
+.dmn-viewer-host .header,
+.dmn-viewer-host .input-cell,
+.dmn-viewer-host .output-cell,
+.dmn-viewer-host .index-column,
+.dmn-viewer-host .rule-index {
+  background-color: var(--muted) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+
+/* Primary heading text: decision name, hit policy, column labels. */
+.dmn-viewer-host .decision-table-name,
+.dmn-viewer-host .hit-policy,
+.dmn-viewer-host .hit-policy-value,
+.dmn-viewer-host .dms-label,
+.dmn-viewer-host .input-label,
+.dmn-viewer-host .output-label {
+  color: var(--foreground) !important;
+}
+
+/* Secondary text: variable/type hints, annotations. */
+.dmn-viewer-host .input-variable,
+.dmn-viewer-host .output-variable,
+.dmn-viewer-host .annotation {
+  color: var(--muted-foreground) !important;
+}
+
+/* "View DRD" button. */
+.dmn-viewer-host .view-drd-button {
+  background-color: var(--muted) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+
+/* Read-only cell editors. */
+.dmn-viewer-host input,
+.dmn-viewer-host textarea,
+.dmn-viewer-host [contenteditable] {
+  background: transparent !important;
+  color: var(--foreground) !important;
+}
+
+/* =====================================================
    bpmn-js – Task count badge overlay
    Rendered via the overlays API; bpmn-js positions the
    wrapper element — we only style the inner pill.

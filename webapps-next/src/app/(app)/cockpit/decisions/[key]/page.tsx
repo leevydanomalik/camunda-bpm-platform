@@ -130,39 +130,26 @@ export default async function DecisionDefinitionPage({ params }: { params: Promi
         </Card>
       )}
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Resource</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <code className="text-xs">{def.resource}</code>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Deployment</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <code className="text-xs">{def.deploymentId}</code>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">DRD</CardTitle>
-          </CardHeader>
-          <CardContent className="font-mono text-xs">{def.decisionRequirementsDefinitionKey ?? "—"}</CardContent>
-        </Card>
-      </div>
+      {/* Compact metadata strip — one divided row instead of three tall cards. */}
+      <Card className="py-0">
+        <CardContent className="grid grid-cols-1 divide-y p-0 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          <MetaCell label="Resource" value={def.resource} mono />
+          <MetaCell label="Deployment" value={def.deploymentId} mono />
+          <MetaCell label="DRD" value={def.decisionRequirementsDefinitionKey ?? "—"} mono />
+        </CardContent>
+      </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent evaluations</CardTitle>
-          <CardDescription>Top 20, newest first.</CardDescription>
+      <Card className="gap-0 py-0">
+        <CardHeader className="flex flex-row items-baseline justify-between gap-2 border-b py-3">
+          <div className="flex items-baseline gap-2">
+            <CardTitle className="text-sm font-medium">Recent evaluations</CardTitle>
+            <span className="text-muted-foreground text-xs tabular-nums">{history.length}</span>
+          </div>
+          <CardDescription className="text-xs">Top 20, newest first</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {history.length === 0 ? (
-            <div className="text-muted-foreground p-6 text-sm">No evaluations recorded yet.</div>
+            <div className="text-muted-foreground px-4 py-3 text-xs">No evaluations recorded yet.</div>
           ) : (
             <Table>
               <TableHeader>
@@ -185,6 +172,18 @@ export default async function DecisionDefinitionPage({ params }: { params: Promi
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** One compact label/value cell in the metadata strip. */
+function MetaCell({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="min-w-0 px-4 py-3">
+      <div className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">{label}</div>
+      <div className={`mt-0.5 truncate text-xs ${mono ? "font-mono" : ""}`} title={value}>
+        {value}
+      </div>
     </div>
   );
 }

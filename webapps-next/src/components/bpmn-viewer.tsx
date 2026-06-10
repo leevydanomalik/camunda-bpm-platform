@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { Flame } from "lucide-react";
+import { Expand, Flame, Maximize, Minus, Plus, Shrink } from "lucide-react";
 
 // ── Minimal ambient types for what we use from bpmn-js ──
 type BpmnCanvas = {
@@ -77,6 +77,9 @@ export type BpmnViewerProps = {
 const HIGHLIGHT_MARKER = "cam-active";
 const BADGE_OVERLAY_TYPE = "activity-badge";
 
+const CONTROL_BTN =
+  "text-muted-foreground hover:text-foreground hover:bg-muted flex size-7 items-center justify-center rounded-sm transition-colors";
+
 // bpmn-js bakes two hard-coded inline fills onto every shape/label: white
 // (shape bodies + task-icon backdrops) and #22242a (label text + task glyphs).
 // CSS can't reliably beat an inline style across bpmn-js versions, so we remap
@@ -132,6 +135,43 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
   const [loading, setLoading] = useState(true);
   const [isReady, setIsReady] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(Boolean(heatmap));
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // ── Diagram controls (zoom / fit / fullscreen) ──
+  const getCanvas = () => {
+    try {
+      return viewerRef.current?.get<BpmnCanvas>("canvas") ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const zoomBy = (delta: number) => {
+    const canvas = getCanvas();
+    if (!canvas) return;
+    const next = Math.min(4, Math.max(0.2, canvas.zoom() + delta));
+    canvas.zoom(next, "auto");
+  };
+  const fitView = () => getCanvas()?.zoom("fit-viewport", "auto");
+  const toggleFullscreen = () => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    if (document.fullscreenElement === el) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      el.requestFullscreen().catch(() => {});
+    }
+  };
+
+  // Track fullscreen state and refit when it changes.
+  useEffect(() => {
+    const onChange = () => {
+      setIsFullscreen(document.fullscreenElement === wrapperRef.current);
+      // Let layout settle, then refit the diagram to the new size.
+      requestAnimationFrame(() => getCanvas()?.zoom("fit-viewport", "auto"));
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
 
   // ── 1. Mount bpmn-js + apply highlights + badges ──
   useEffect(() => {
@@ -468,7 +508,12 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
   }
 
   return (
-    <div ref={wrapperRef} className="bg-muted/10 relative w-full overflow-hidden rounded-md border" style={{ height }}>
+    <div
+      ref={wrapperRef}
+      data-bpmn-root
+      className="bg-muted/10 relative w-full overflow-hidden rounded-md border"
+      style={{ height }}
+    >
       {loading ? (
         <div className="text-muted-foreground absolute inset-0 z-20 flex items-center justify-center text-sm">
           Loading diagram…
@@ -491,7 +536,40 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
           {showHeatmap ? "Heatmap on" : "Heatmap off"}
         </button>
       ) : null}
+
+      {/* Zoom / fit / fullscreen controls — bottom-right. */}
+      <div className="bg-background/90 absolute right-3 bottom-3 z-30 flex items-center gap-0.5 rounded-md border p-0.5 shadow-sm backdrop-blur-sm">
+        <button type="button" onClick={() => zoomBy(0.2)} className={CONTROL_BTN} aria-label="Zoom in" title="Zoom in">
+          <Plus className="size-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => zoomBy(-0.2)}
+          className={CONTROL_BTN}
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          <Minus className="size-4" />
+        </button>
+        <button type="button" onClick={fitView} className={CONTROL_BTN} aria-label="Fit to view" title="Fit to view">
+          <Maximize className="size-4" />
+        </button>
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          className={CONTROL_BTN}
+          aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+        >
+          {isFullscreen ? <Shrink className="size-4" /> : <Expand className="size-4" />}
+        </button>
+      </div>
       <style>{`
+        [data-bpmn-root]:fullscreen {
+          height: 100vh !important;
+          border-radius: 0;
+          background: var(--background);
+        }
         .djs-element.${HIGHLIGHT_MARKER} .djs-visual > :nth-child(1) {
           stroke: var(--primary) !important;
           stroke-width: 3px !important;

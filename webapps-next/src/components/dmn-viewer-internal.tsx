@@ -27,6 +27,34 @@ function viewLabel(v: DmnView): string {
   return v.element.name ?? v.element.id ?? v.id;
 }
 
+// The DRD view is SVG and bakes the same hard-coded fills as bpmn-js; remap them
+// to theme vars (no-op for the decision-table HTML view, which has no <svg>).
+const SURFACE_FILLS = new Set(["white", "rgb(255,255,255)", "#fff", "#ffffff"]);
+const INK_FILLS = new Set(["rgb(34,36,42)", "#22242a"]);
+function remapFills(host: HTMLElement | null) {
+  if (!host) return;
+  // Scan every svg under the host (dmn-js keeps one container per view, so the
+  // DRD svg may not be the first one) for baked-in white / #22242a fills.
+  for (const el of host.querySelectorAll<SVGElement>("svg [style*='fill']")) {
+    const fill = (el.style.fill || "").toLowerCase().replace(/\s+/g, "");
+    if (SURFACE_FILLS.has(fill)) el.style.fill = "var(--bpmn-surface)";
+    else if (INK_FILLS.has(fill)) el.style.fill = "var(--bpmn-ink)";
+  }
+  // DRD decision/knowledge nodes are HTML boxes (.dmn-definitions) inside a
+  // foreignObject — dmn-js paints them white via its own CSS class, so theme
+  // them inline here (immediate, no globals.css dependency).
+  for (const el of host.querySelectorAll<HTMLElement>(".dmn-definitions")) {
+    el.style.setProperty("background-color", "var(--card)", "important");
+    el.style.setProperty("color", "var(--foreground)", "important");
+    el.style.setProperty("border-color", "var(--border)", "important");
+  }
+}
+/** Defer past dmn-js's render so the SVG is in the DOM before we remap. */
+function applyDmnDiagramTheme(host: HTMLElement | null) {
+  remapFills(host);
+  requestAnimationFrame(() => remapFills(host));
+}
+
 export function DmnViewer({ xml, height = 480 }: DmnViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<DmnJsViewer | null>(null);
@@ -50,6 +78,9 @@ export function DmnViewer({ xml, height = 480 }: DmnViewerProps) {
           viewerRef.current.destroy();
           viewerRef.current = null;
         }
+        // dmn-js destroy() leaves the foreignObject node HTML behind, so a
+        // previous decision's DRD box can linger as a ghost. Clear it.
+        container.replaceChildren();
         const mod = await import("dmn-js/lib/NavigatedViewer");
         if (cancelled || !containerRef.current) return;
 
@@ -76,6 +107,7 @@ export function DmnViewer({ xml, height = 480 }: DmnViewerProps) {
           if (active) setActiveViewId(active.id);
         }
 
+        applyDmnDiagramTheme(containerRef.current);
         setLoading(false);
       } catch (err) {
         if (!cancelled) {
@@ -102,6 +134,7 @@ export function DmnViewer({ xml, height = 480 }: DmnViewerProps) {
     try {
       await viewer.open(view);
       setActiveViewId(view.id);
+      applyDmnDiagramTheme(containerRef.current);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to switch view");
     }
@@ -145,7 +178,7 @@ export function DmnViewer({ xml, height = 480 }: DmnViewerProps) {
             Loading decision…
           </div>
         ) : null}
-        <div ref={containerRef} className="h-full w-full" />
+        <div ref={containerRef} className="dmn-viewer-host h-full w-full" />
       </div>
     </div>
   );

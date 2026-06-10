@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/"
+             xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/"
+             xmlns:camunda="http://camunda.org/schema/1.0/dmn"
+             id="OvertimeRateDefinitions" name="Overtime Rate"
+             namespace="http://deepflow/dmn/overtime"
+             exporter="DeepFlow" exporterVersion="1.0">
+  <decision id="overtimeRate" name="Overtime Pay Multiplier" camunda:historyTimeToLive="P180D">
+    <decisionTable id="dt_overtime" hitPolicy="FIRST">
+      <input id="ot_in_day" label="Day type">
+        <inputExpression id="ot_ie_day" typeRef="string">
+          <text>dayType</text>
+        </inputExpression>
+        <inputValues id="ot_dayvals"><text>"WEEKDAY","WEEKEND","HOLIDAY"</text></inputValues>
+      </input>
+      <input id="ot_in_hours" label="Overtime hours">
+        <inputExpression id="ot_ie_hours" typeRef="number">
+          <text>overtimeHours</text>
+        </inputExpression>
+      </input>
+      <output id="ot_out_mult" label="Multiplier" name="multiplier" typeRef="number" />
+      <output id="ot_out_note" label="Basis" name="basis" typeRef="string" />
+      <rule id="ot_r1">
+        <inputEntry id="ot_r1i1"><text>"WEEKDAY"</text></inputEntry>
+        <inputEntry id="ot_r1i2"><text>&lt;= 1</text></inputEntry>
+        <outputEntry id="ot_r1o1"><text>1.5</text></outputEntry>
+        <outputEntry id="ot_r1o2"><text>"First overtime hour on a workday"</text></outputEntry>
+      </rule>
+      <rule id="ot_r2">
+        <inputEntry id="ot_r2i1"><text>"WEEKDAY"</text></inputEntry>
+        <inputEntry id="ot_r2i2"><text>&gt; 1</text></inputEntry>
+        <outputEntry id="ot_r2o1"><text>2</text></outputEntry>
+        <outputEntry id="ot_r2o2"><text>"Subsequent overtime hours on a workday"</text></outputEntry>
+      </rule>
+      <rule id="ot_r3">
+        <inputEntry id="ot_r3i1"><text>"WEEKEND"</text></inputEntry>
+        <inputEntry id="ot_r3i2"><text>-</text></inputEntry>
+        <outputEntry id="ot_r3o1"><text>2</text></outputEntry>
+        <outputEntry id="ot_r3o2"><text>"Weekend rest-day rate"</text></outputEntry>
+      </rule>
+      <rule id="ot_r4">
+        <inputEntry id="ot_r4i1"><text>"HOLIDAY"</text></inputEntry>
+        <inputEntry id="ot_r4i2"><text>-</text></inputEntry>
+        <outputEntry id="ot_r4o1"><text>3</text></outputEntry>
+        <outputEntry id="ot_r4o2"><text>"Public-holiday rate"</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="drd_overtime">
+      <dmndi:DMNShape id="shape_overtimeRate" dmnElementRef="overtimeRate">
+        <dc:Bounds height="80" width="180" x="160" y="100" />
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>
