@@ -50,7 +50,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mx-2 h-4" />
             <div className="ml-auto flex items-center gap-1">
-              <HeaderBell count={0} />
+              <HeaderBell username={session.username} />
               <PreferencesPopover />
               <ThemeSwitcher />
               <Separator orientation="vertical" className="mx-1 h-5" />

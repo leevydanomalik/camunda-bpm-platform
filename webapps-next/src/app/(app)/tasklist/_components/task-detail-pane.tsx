@@ -303,7 +303,7 @@ export async function TaskDetailPane({ taskId, username }: { taskId: string; use
       </header>
 
       <Tabs defaultValue={defaultTab} className="flex min-h-0 flex-1 flex-col">
-        <div className="bg-background px-6 pt-3">
+        <div className="px-6 pt-3">
           <TabsList>
             <TabsTrigger value="form">Form</TabsTrigger>
             {processXml ? <TabsTrigger value="diagram">Diagram</TabsTrigger> : null}

@@ -36,6 +36,71 @@ function processName(id: string | null): string | null {
   return id.split(":")[0] ?? id;
 }
 
+// Same palette as the dashboard's Active users card — tone picked by a stable
+// hash of the username so each person keeps their color everywhere.
+const AVATAR_TONES = [
+  "bg-chart-1/15 text-chart-1",
+  "bg-chart-2/15 text-chart-2",
+  "bg-chart-3/15 text-chart-3",
+  "bg-chart-4/15 text-chart-4",
+  "bg-chart-5/15 text-chart-5",
+];
+
+function avatarTone(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return AVATAR_TONES[Math.abs(h) % AVATAR_TONES.length];
+}
+
+function Assignee({ name }: { name: string | null }) {
+  if (!name) {
+    return (
+      <span className="text-muted-foreground/80 inline-flex shrink-0 items-center gap-1.5">
+        <span className="border-muted-foreground/40 flex size-5 items-center justify-center rounded-full border border-dashed">
+          <User className="size-2.5" />
+        </span>
+        unassigned
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5">
+      <span
+        className={cn(
+          "flex size-5 items-center justify-center rounded-full text-[9px] font-semibold uppercase",
+          avatarTone(name),
+        )}
+      >
+        {name.slice(0, 2)}
+      </span>
+      <span className="text-foreground/80">{name}</span>
+    </span>
+  );
+}
+
+/**
+ * Engine task priority (0–100, default 50). The default carries no signal, so
+ * only deviations get a chip: ≥75 high (red), >50 elevated (amber), <50 low.
+ */
+function PriorityChip({ priority }: { priority: number }) {
+  if (priority === 50) return null;
+  return (
+    <span
+      title={`Priority ${priority} (default is 50)`}
+      className={cn(
+        "inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ring-1 ring-inset",
+        priority >= 75
+          ? "bg-red-500/12 text-red-600 ring-red-500/20 dark:text-red-400"
+          : priority > 50
+            ? "bg-amber-500/12 text-amber-600 ring-amber-500/20 dark:text-amber-400"
+            : "bg-muted text-muted-foreground ring-border",
+      )}
+    >
+      P{priority}
+    </span>
+  );
+}
+
 export function TaskCards({
   tasks,
   selectedId,
@@ -127,18 +192,21 @@ export function TaskCards({
                     type="button"
                     onClick={() => selectTask(t.id)}
                     className={cn(
-                      "block w-full px-4 py-3 pr-12 text-left transition-colors",
+                      "block w-full px-4 py-3 text-left transition-colors",
                       isActive ? "bg-accent/60" : "hover:bg-accent/30",
                     )}
                   >
                     <div className="space-y-0.5">
-                      <div
-                        className={cn(
-                          "truncate text-sm leading-snug font-semibold",
-                          isActive ? "text-primary" : "text-foreground",
-                        )}
-                      >
-                        {t.name || t.id}
+                      <div className="flex items-center justify-between gap-2">
+                        <div
+                          className={cn(
+                            "truncate text-sm leading-snug font-semibold",
+                            isActive ? "text-primary" : "text-foreground",
+                          )}
+                        >
+                          {t.name || t.id}
+                        </div>
+                        <PriorityChip priority={t.priority} />
                       </div>
                       {proc ? <div className="text-muted-foreground truncate text-[12px] italic">{proc}</div> : null}
                     </div>
@@ -160,24 +228,8 @@ export function TaskCards({
                           </span>
                         ) : null}
                       </div>
-                      <span className="inline-flex shrink-0 items-center gap-1">
-                        <User className="size-3" />
-                        {t.assignee ? t.assignee : <em className="text-muted-foreground/80 not-italic">unassigned</em>}
-                      </span>
+                      <Assignee name={t.assignee} />
                     </div>
-                    <span
-                      className={cn(
-                        "absolute top-2.5 right-3 text-base font-semibold tabular-nums",
-                        t.priority >= 75
-                          ? "text-red-600 dark:text-red-400"
-                          : t.priority >= 50
-                            ? "text-amber-600 dark:text-amber-400"
-                            : "text-muted-foreground",
-                      )}
-                      title={`Priority ${t.priority}`}
-                    >
-                      {t.priority}
-                    </span>
                   </button>
                 </li>
               );
