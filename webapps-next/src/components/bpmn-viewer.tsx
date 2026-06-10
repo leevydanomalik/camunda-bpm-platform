@@ -2,12 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { Expand, Flame, Maximize, Minus, Plus, Shrink } from "lucide-react";
+import { Expand, Maximize, Minus, Plus, Shrink } from "lucide-react";
+
+// Heatmap rendering is a paid plugin (Heatmap Pro). v0 plugin contract links
+// statically — the painter is bundled, but it only ever runs when the plugin
+// is installed (runtime install state). Not installed → no overlay, no UI.
+import { paintHeatmap } from "@/../plugins/heatmap-pro/client";
+import { usePluginInstalled } from "@/lib/plugins/install-state";
+import { HEATMAP_PLUGIN_ID } from "@/lib/plugins/manifests";
 
 // ── Minimal ambient types for what we use from bpmn-js ──
 type BpmnCanvas = {
   zoom: (arg?: string | number, center?: string | { x: number; y: number }) => number;
   addMarker: (id: string, cls: string) => void;
+  /** Invalidates the cached container size (and viewbox). */
+  resized: () => void;
 };
 type BpmnEventBus = {
   on: (event: string, cb: () => void) => void;
@@ -21,20 +30,6 @@ type BpmnFlowElement = {
   waypoints?: Array<{ x: number; y: number }>;
 };
 
-// Tokens only ever live on flow nodes. Pools/lanes, data, groups, and
-// annotations never hold a running instance, so they must not receive heat
-// halos — a big collapsed pool would otherwise bloom into a giant blob from
-// propagated (not real) heat.
-const NON_TOKEN_TYPES = new Set([
-  "bpmn:Participant",
-  "bpmn:Lane",
-  "bpmn:DataObjectReference",
-  "bpmn:DataStoreReference",
-  "bpmn:DataInput",
-  "bpmn:DataOutput",
-  "bpmn:Group",
-  "bpmn:TextAnnotation",
-]);
 type BpmnElementRegistry = {
   getAll: () => BpmnFlowElement[];
 };
@@ -70,8 +65,15 @@ export type BpmnViewerProps = {
   activityIds?: string[];
   /** Per-activity numbered badges (instance counts, incident counts, ...). */
   badges?: ActivityBadge[];
-  /** Element-id → weight in [0,1]. Renders a heatmap overlay; pass undefined to disable. */
+  /**
+   * Element-id → weight in [0,1]. Renders a heatmap overlay; pass undefined
+   * to disable. Requires the Heatmap Pro plugin — without it, nothing renders.
+   */
   heatmap?: Record<string, number>;
+  /** External heatmap visibility toggle (defaults to true when `heatmap` is set). */
+  heatmapVisible?: boolean;
+  /** Show the zoom/fit/fullscreen cluster. Turn off for small thumbnails. */
+  controls?: boolean;
 };
 
 const HIGHLIGHT_MARKER = "cam-active";
@@ -100,33 +102,15 @@ function applyDiagramTheme(host: HTMLElement | null) {
   }
 }
 
-// ── Heat LUT (cold purple → hot red) — same stops as cargotrain reference ──
-const HEAT_STOPS: Array<{ t: number; rgb: [number, number, number] }> = [
-  { t: 0.0, rgb: [63, 0, 189] },
-  { t: 0.25, rgb: [0, 170, 255] },
-  { t: 0.5, rgb: [0, 230, 110] },
-  { t: 0.75, rgb: [255, 220, 0] },
-  { t: 1.0, rgb: [255, 45, 0] },
-];
-
-function heatColor(t: number): [number, number, number] {
-  const v = Math.min(1, Math.max(0, t));
-  for (let i = 0; i < HEAT_STOPS.length - 1; i++) {
-    const a = HEAT_STOPS[i];
-    const b = HEAT_STOPS[i + 1];
-    if (v >= a.t && v <= b.t) {
-      const k = (v - a.t) / (b.t - a.t);
-      return [
-        Math.round(a.rgb[0] + (b.rgb[0] - a.rgb[0]) * k),
-        Math.round(a.rgb[1] + (b.rgb[1] - a.rgb[1]) * k),
-        Math.round(a.rgb[2] + (b.rgb[2] - a.rgb[2]) * k),
-      ];
-    }
-  }
-  return HEAT_STOPS[HEAT_STOPS.length - 1].rgb;
-}
-
-export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: BpmnViewerProps) {
+export function BpmnViewer({
+  xml,
+  height = 400,
+  activityIds,
+  badges,
+  heatmap,
+  heatmapVisible = true,
+  controls = true,
+}: BpmnViewerProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const bpmnHostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -134,8 +118,11 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isReady, setIsReady] = useState(false);
-  const [showHeatmap, setShowHeatmap] = useState(Boolean(heatmap));
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // The heatmap is a paid plugin — not installed means it doesn't exist here.
+  const heatmapPluginInstalled = usePluginInstalled(HEATMAP_PLUGIN_ID, false);
+  const heatActive = Boolean(heatmap) && heatmapPluginInstalled && heatmapVisible;
 
   // ── Diagram controls (zoom / fit / fullscreen) ──
   const getCanvas = () => {
@@ -151,7 +138,30 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
     const next = Math.min(4, Math.max(0.2, canvas.zoom() + delta));
     canvas.zoom(next, "auto");
   };
-  const fitView = () => getCanvas()?.zoom("fit-viewport", "auto");
+  // fit-viewport computed before layout settles yields a degenerate
+  // matrix(0 …) and a blank diagram (the deep-link race). Verify the viewport
+  // transform after fitting and retry on animation frames until it's sane.
+  const robustFit = (attempts = 60) => {
+    const tryFit = (left: number) => {
+      const canvas = getCanvas();
+      const host = bpmnHostRef.current;
+      if (!canvas || !host) return;
+      try {
+        // bpmn-js caches the container size; if it was measured while the
+        // host was 0×0 (hydration), every fit stays degenerate until the
+        // cache is invalidated.
+        canvas.resized();
+        canvas.zoom("fit-viewport", "auto");
+      } catch {
+        return;
+      }
+      const t = host.querySelector("svg g.viewport")?.getAttribute("transform") ?? "";
+      const degenerate = t === "" || t.startsWith("matrix(0 ") || t.startsWith("matrix(0,");
+      if (degenerate && left > 0) requestAnimationFrame(() => tryFit(left - 1));
+    };
+    tryFit(attempts);
+  };
+  const fitView = () => robustFit();
   const toggleFullscreen = () => {
     const el = wrapperRef.current;
     if (!el) return;
@@ -167,7 +177,7 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
     const onChange = () => {
       setIsFullscreen(document.fullscreenElement === wrapperRef.current);
       // Let layout settle, then refit the diagram to the new size.
-      requestAnimationFrame(() => getCanvas()?.zoom("fit-viewport", "auto"));
+      requestAnimationFrame(() => robustFit());
     };
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
@@ -199,7 +209,7 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
         if (cancelled) return;
 
         const canvas = viewer.get<BpmnCanvas>("canvas");
-        canvas.zoom("fit-viewport", "auto");
+        robustFit();
 
         // Remap bpmn-js's baked-in white/#22242a fills to theme vars.
         applyDiagramTheme(host);
@@ -290,181 +300,21 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssW, cssH);
 
-      if (!heatmap || !showHeatmap) return;
+      if (!heatmap || !heatActive) return;
 
       const svg = bpmnHost.querySelector("svg") as SVGSVGElement | null;
       if (!svg) return;
-      const viewportGroup = svg.querySelector("g.viewport") as SVGGraphicsElement | null;
-      if (!viewportGroup) return;
-      const ctm = viewportGroup.getScreenCTM();
-      if (!ctm) return;
 
-      const pt = svg.createSVGPoint();
-      const toLocal = (dx: number, dy: number) => {
-        pt.x = dx;
-        pt.y = dy;
-        const s = pt.matrixTransform(ctm);
-        return { x: s.x - wrapperRect.left, y: s.y - wrapperRect.top };
-      };
-      const scale = ctm.a || 1;
-
-      // Build a structural-propagation heatmap: BPMN runtime stats only assign
-      // weights to nodes that currently hold instances (user tasks waiting,
-      // jobs queued). Gateways, events, and downstream tasks are all 0, so the
-      // visualization breaks at every transition. Walk the sequence-flow graph
-      // outward from each hot node in both directions, attenuating per hop,
-      // and merge the inferred values with the raw heatmap. The result is a
-      // continuous gradient that shows where the process flow is heading
-      // (forward) and where it came from (backward), peaked at the real hot
-      // spots.
-      const all = elementRegistry.getAll();
-      const byId: Record<string, BpmnFlowElement> = {};
-      for (const el of all) byId[el.id] = el;
-      const fwd: Record<string, string[]> = {};
-      const bwd: Record<string, string[]> = {};
-      for (const el of all) {
-        // Only sequence flows carry tokens — message flows/associations don't,
-        // so heat must not propagate across them into other pools.
-        if (el.businessObject?.$type !== "bpmn:SequenceFlow") continue;
-        const srcId = el.source?.id ?? el.businessObject?.sourceRef?.id;
-        const tgtId = el.target?.id ?? el.businessObject?.targetRef?.id;
-        if (!srcId || !tgtId) continue;
-        (fwd[srcId] ??= []).push(tgtId);
-        (bwd[tgtId] ??= []).push(srcId);
-      }
-      const ATTENUATION = 0.6; // per-hop heat decay
-      const MIN_HEAT = 0.05; // values below this are not visible — stop BFS
-      const effective: Record<string, number> = {};
-      for (const [id, raw] of Object.entries(heatmap)) {
-        const v = Math.min(1, Math.max(0, raw));
-        if (v > 0) effective[id] = Math.max(effective[id] ?? 0, v);
-      }
-      const queue: Array<{ id: string; level: number; dir: "fwd" | "bwd" }> = [];
-      for (const [id, v] of Object.entries(effective)) {
-        queue.push({ id, level: v, dir: "fwd" }, { id, level: v, dir: "bwd" });
-      }
-      while (queue.length > 0) {
-        const node = queue.shift() as { id: string; level: number; dir: "fwd" | "bwd" };
-        const next = node.level * ATTENUATION;
-        if (next < MIN_HEAT) continue;
-        const neighbors = node.dir === "fwd" ? fwd[node.id] : bwd[node.id];
-        if (!neighbors) continue;
-        for (const nId of neighbors) {
-          if ((effective[nId] ?? 0) >= next) continue;
-          effective[nId] = next;
-          queue.push({ id: nId, level: next, dir: node.dir });
-        }
-      }
-
-      // Element centers (primary heat) and corridor points (secondary, attenuated).
-      const elementPts: Array<{ x: number; y: number; v: number; w: number; h: number }> = [];
-      const corridorPts: Array<{ x: number; y: number; v: number }> = [];
-
-      // Cap the halo footprint so a large flow node (e.g. an expanded
-      // sub-process) can't bloom across the whole canvas.
-      const MAX_HALO_SIZE = 140;
-      for (const [id, raw] of Object.entries(effective)) {
-        const v = Math.min(1, Math.max(0, raw));
-        if (v <= 0) continue;
-        // Pools/lanes/data/groups never hold tokens — no halo for them.
-        if (NON_TOKEN_TYPES.has(byId[id]?.businessObject?.$type ?? "")) continue;
-        const node = svg.querySelector(`[data-element-id="${CSS.escape(id)}"]`) as SVGGraphicsElement | null;
-        if (!node) continue;
-        const r = node.getBoundingClientRect();
-        if (r.width === 0 && r.height === 0) continue;
-        elementPts.push({
-          x: r.left + r.width / 2 - wrapperRect.left,
-          y: r.top + r.height / 2 - wrapperRect.top,
-          v,
-          w: Math.min(r.width, MAX_HALO_SIZE),
-          h: Math.min(r.height, MAX_HALO_SIZE),
-        });
-      }
-
-      // Flow corridors — sample every ~22px along each sequence flow, using
-      // the propagated `effective` heat so paths between distant hot regions
-      // also glow at their inferred intensity.
-      for (const el of all) {
-        if (!el.waypoints || el.waypoints.length < 2) continue;
-        // Only sequence flows glow — message flows/associations don't carry tokens.
-        if (el.businessObject?.$type !== "bpmn:SequenceFlow") continue;
-        const srcId = el.source?.id ?? el.businessObject?.sourceRef?.id;
-        const tgtId = el.target?.id ?? el.businessObject?.targetRef?.id;
-        if (!srcId || !tgtId) continue;
-        const srcW = effective[srcId] ?? 0;
-        const tgtW = effective[tgtId] ?? 0;
-        if (srcW <= 0 && tgtW <= 0) continue;
-        // Both endpoints rated → min (bottleneck-style, matches the
-        // cargotrain reference). One side at 0 → use the rated side.
-        const blend = srcW > 0 && tgtW > 0 ? Math.min(srcW, tgtW) : Math.max(srcW, tgtW);
-        const corridor = Math.min(1, Math.max(0, blend));
-        if (corridor <= 0) continue;
-
-        const wps = el.waypoints;
-        for (let i = 0; i < wps.length - 1; i++) {
-          const a = wps[i];
-          const b = wps[i + 1];
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const dist = Math.hypot(dx, dy);
-          const steps = Math.max(2, Math.ceil(dist / 22));
-          for (let s = 0; s <= steps; s++) {
-            const t = s / steps;
-            const p = toLocal(a.x + dx * t, a.y + dy * t);
-            corridorPts.push({ x: p.x, y: p.y, v: corridor });
-          }
-        }
-      }
-
-      if (elementPts.length === 0 && corridorPts.length === 0) return;
-
-      const corridorRadius = Math.max(14, Math.round(26 * scale));
-
-      // Pass 1: accumulate grayscale alpha via "lighter" composition.
-      const off = document.createElement("canvas");
-      off.width = cssW;
-      off.height = cssH;
-      const octx = off.getContext("2d");
-      if (!octx) return;
-      octx.globalCompositeOperation = "lighter";
-
-      const paintRadial = (x: number, y: number, r: number, centerAlpha: number) => {
-        const grad = octx.createRadialGradient(x, y, 0, x, y, r);
-        grad.addColorStop(0, `rgba(0,0,0,${centerAlpha})`);
-        grad.addColorStop(1, "rgba(0,0,0,0)");
-        octx.fillStyle = grad;
-        octx.fillRect(x - r, y - r, r * 2, r * 2);
-      };
-
-      for (const { x, y, v, w, h } of elementPts) {
-        const size = Math.max(w, h);
-        const heatMul = 0.5 + v * 0.5;
-        const haloR = Math.max(22, Math.round(size * 0.85 * heatMul));
-        paintRadial(x, y, haloR, Math.min(0.52, 0.24 + v * 0.35));
-        const midR = Math.max(16, Math.round(size * 0.55 * heatMul));
-        paintRadial(x, y, midR, Math.min(0.7, 0.38 + v * 0.4));
-        const innerR = Math.max(8, Math.round(size * 0.28 * heatMul));
-        paintRadial(x, y, innerR, Math.min(0.88, 0.58 + v * 0.32));
-      }
-      for (const { x, y, v } of corridorPts) {
-        paintRadial(x, y, corridorRadius, Math.min(0.42, 0.18 + v * 0.26));
-      }
-
-      // Pass 2: LUT colorize.
-      const img = octx.getImageData(0, 0, cssW, cssH);
-      const data = img.data;
-      for (let i = 0; i < data.length; i += 4) {
-        const a = data[i + 3];
-        if (a === 0) continue;
-        const t = Math.min(1, Math.pow(a / 255, 0.5));
-        const [r, g, b] = heatColor(t);
-        data[i] = r;
-        data[i + 1] = g;
-        data[i + 2] = b;
-        data[i + 3] = Math.min(230, Math.round(a * 1.8));
-      }
-      octx.putImageData(img, 0, 0);
-      ctx.drawImage(off, 0, 0, cssW, cssH);
+      // Delegate the actual painting to the Heatmap Pro plugin.
+      paintHeatmap({
+        ctx,
+        cssW,
+        cssH,
+        wrapperRect,
+        svg,
+        elements: elementRegistry.getAll(),
+        weights: heatmap,
+      });
     }
 
     let rafId = requestAnimationFrame(draw);
@@ -473,11 +323,7 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
       rafId = requestAnimationFrame(draw);
     };
     const refitAndRedraw = () => {
-      try {
-        viewer.get<BpmnCanvas>("canvas").zoom("fit-viewport", "auto");
-      } catch {
-        /* ignore */
-      }
+      robustFit(15);
       redraw();
     };
 
@@ -494,7 +340,7 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
       ro.disconnect();
       clearCanvas();
     };
-  }, [isReady, heatmap, showHeatmap]);
+  }, [isReady, heatmap, heatActive]);
 
   if (error) {
     return (
@@ -523,22 +369,14 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
       <canvas
         ref={canvasRef}
         className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-200"
-        style={{ opacity: heatmap && showHeatmap ? 0.95 : 0 }}
+        style={{ opacity: heatActive ? 0.95 : 0 }}
       />
-      {heatmap ? (
-        <button
-          type="button"
-          onClick={() => setShowHeatmap((v) => !v)}
-          className="bg-background/90 hover:bg-background absolute right-3 top-3 z-30 flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs shadow-sm backdrop-blur-sm"
-          aria-pressed={showHeatmap}
-        >
-          <Flame className={`size-3.5 ${showHeatmap ? "text-orange-500" : "text-muted-foreground"}`} />
-          {showHeatmap ? "Heatmap on" : "Heatmap off"}
-        </button>
-      ) : null}
 
       {/* Zoom / fit / fullscreen controls — bottom-right. */}
-      <div className="bg-background/90 absolute right-3 bottom-3 z-30 flex items-center gap-0.5 rounded-md border p-0.5 shadow-sm backdrop-blur-sm">
+      <div
+        className="bg-background/90 absolute right-3 bottom-3 z-30 flex items-center gap-0.5 rounded-md border p-0.5 shadow-sm backdrop-blur-sm"
+        hidden={!controls}
+      >
         <button type="button" onClick={() => zoomBy(0.2)} className={CONTROL_BTN} aria-label="Zoom in" title="Zoom in">
           <Plus className="size-4" />
         </button>

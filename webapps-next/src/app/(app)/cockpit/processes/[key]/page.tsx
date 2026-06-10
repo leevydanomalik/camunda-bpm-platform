@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { ArrowLeft } from "lucide-react";
 
-import { type ActivityBadge, BpmnViewer } from "@/components/bpmn-viewer";
+import type { ActivityBadge } from "@/components/bpmn-viewer";
 import { StartProcessButton } from "@/components/start-process-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { engineGet } from "@/lib/camunda/engine";
 
-import { ProcessAiDialog } from "../_components/process-ai-dialog";
+import { DiagramCard } from "./_components/diagram-card";
 
 type ActivityStatistic = {
   id: string; // activityId
@@ -202,39 +202,14 @@ export default async function ProcessDefinitionPage({
       </div>
 
       {xml ? (
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-1">
-                <CardTitle>Diagram</CardTitle>
-                <CardDescription>
-                  Instance counts bottom-left · incident counts top-right · heatmap weighted by{" "}
-                  {heatMode === "history" ? "all-time" : "currently running"} activity instances.
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <ProcessAiDialog processKey={def.key} processName={def.name ?? def.key} />
-                <div className="bg-muted text-muted-foreground inline-flex items-center rounded-md p-0.5 text-xs">
-                  <Link
-                    href={`/cockpit/processes/${encodeURIComponent(def.key)}`}
-                    className={`rounded-sm px-2.5 py-1 ${heatMode === "runtime" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"}`}
-                  >
-                    Runtime
-                  </Link>
-                  <Link
-                    href={`/cockpit/processes/${encodeURIComponent(def.key)}?heat=history`}
-                    className={`rounded-sm px-2.5 py-1 ${heatMode === "history" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"}`}
-                  >
-                    All-time
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <BpmnViewer xml={xml} height={460} badges={badges} heatmap={heatmap} />
-          </CardContent>
-        </Card>
+        <DiagramCard
+          xml={xml}
+          badges={badges}
+          heatmap={heatmap}
+          heatMode={heatMode}
+          processKey={def.key}
+          processName={def.name ?? def.key}
+        />
       ) : null}
 
       {/* Compact metadata strip — one divided row instead of three tall cards. */}
