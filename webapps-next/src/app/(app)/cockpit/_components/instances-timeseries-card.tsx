@@ -7,7 +7,10 @@ import { bucketize, type Range } from "./range";
 type Count = { count: number };
 
 function isoNoMs(d: Date): string {
-  return d.toISOString().replace(/\.\d{3}Z$/, "");
+  // engine-rest requires a full ISO-8601 timestamp with a numeric offset
+  // (e.g. 2026-06-10T15:30:00.000+0000); a bare "Z" or no-offset value is rejected.
+  // URL-encode: the +0000 offset's "+" would otherwise be read as a space.
+  return encodeURIComponent(d.toISOString().replace("Z", "+0000"));
 }
 
 async function fetchBucket(start: Date, end: Date): Promise<number> {

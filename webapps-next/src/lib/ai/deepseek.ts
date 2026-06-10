@@ -21,6 +21,36 @@ function endpoint(): { url: string; key: string; model: string } {
   };
 }
 
+/** Non-streaming chat completion. Returns the assistant text (optionally JSON-forced). */
+export async function deepseekChat(
+  messages: ChatMessage[],
+  opts: { temperature?: number; maxTokens?: number; json?: boolean; signal?: AbortSignal } = {},
+): Promise<string> {
+  const { url, key, model } = endpoint();
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: opts.temperature ?? 0.3,
+      max_tokens: opts.maxTokens ?? 1400,
+      ...(opts.json ? { response_format: { type: "json_object" } } : {}),
+    }),
+    signal: opts.signal,
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`DeepSeek HTTP ${res.status}: ${detail || res.statusText}`);
+  }
+  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  return data.choices?.[0]?.message?.content ?? "";
+}
+
+export function deepseekModel(): string {
+  return process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
+}
+
 /**
  * Stream a DeepSeek chat completion as NDJSON — one `{t,c}` object per line:
  *   {"t":"reasoning","c":"…"}  the model's chain-of-thought (v4-flash reasons)
