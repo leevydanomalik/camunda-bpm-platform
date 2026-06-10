@@ -17,9 +17,24 @@ type BpmnFlowElement = {
   id: string;
   source?: { id: string };
   target?: { id: string };
-  businessObject?: { sourceRef?: { id?: string }; targetRef?: { id?: string } };
+  businessObject?: { $type?: string; sourceRef?: { id?: string }; targetRef?: { id?: string } };
   waypoints?: Array<{ x: number; y: number }>;
 };
+
+// Tokens only ever live on flow nodes. Pools/lanes, data, groups, and
+// annotations never hold a running instance, so they must not receive heat
+// halos — a big collapsed pool would otherwise bloom into a giant blob from
+// propagated (not real) heat.
+const NON_TOKEN_TYPES = new Set([
+  "bpmn:Participant",
+  "bpmn:Lane",
+  "bpmn:DataObjectReference",
+  "bpmn:DataStoreReference",
+  "bpmn:DataInput",
+  "bpmn:DataOutput",
+  "bpmn:Group",
+  "bpmn:TextAnnotation",
+]);
 type BpmnElementRegistry = {
   getAll: () => BpmnFlowElement[];
 };
@@ -263,9 +278,14 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
       // (forward) and where it came from (backward), peaked at the real hot
       // spots.
       const all = elementRegistry.getAll();
+      const byId: Record<string, BpmnFlowElement> = {};
+      for (const el of all) byId[el.id] = el;
       const fwd: Record<string, string[]> = {};
       const bwd: Record<string, string[]> = {};
       for (const el of all) {
+        // Only sequence flows carry tokens — message flows/associations don't,
+        // so heat must not propagate across them into other pools.
+        if (el.businessObject?.$type !== "bpmn:SequenceFlow") continue;
         const srcId = el.source?.id ?? el.businessObject?.sourceRef?.id;
         const tgtId = el.target?.id ?? el.businessObject?.targetRef?.id;
         if (!srcId || !tgtId) continue;
@@ -300,9 +320,14 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
       const elementPts: Array<{ x: number; y: number; v: number; w: number; h: number }> = [];
       const corridorPts: Array<{ x: number; y: number; v: number }> = [];
 
+      // Cap the halo footprint so a large flow node (e.g. an expanded
+      // sub-process) can't bloom across the whole canvas.
+      const MAX_HALO_SIZE = 140;
       for (const [id, raw] of Object.entries(effective)) {
         const v = Math.min(1, Math.max(0, raw));
         if (v <= 0) continue;
+        // Pools/lanes/data/groups never hold tokens — no halo for them.
+        if (NON_TOKEN_TYPES.has(byId[id]?.businessObject?.$type ?? "")) continue;
         const node = svg.querySelector(`[data-element-id="${CSS.escape(id)}"]`) as SVGGraphicsElement | null;
         if (!node) continue;
         const r = node.getBoundingClientRect();
@@ -311,8 +336,8 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
           x: r.left + r.width / 2 - wrapperRect.left,
           y: r.top + r.height / 2 - wrapperRect.top,
           v,
-          w: r.width,
-          h: r.height,
+          w: Math.min(r.width, MAX_HALO_SIZE),
+          h: Math.min(r.height, MAX_HALO_SIZE),
         });
       }
 
@@ -321,6 +346,8 @@ export function BpmnViewer({ xml, height = 400, activityIds, badges, heatmap }: 
       // also glow at their inferred intensity.
       for (const el of all) {
         if (!el.waypoints || el.waypoints.length < 2) continue;
+        // Only sequence flows glow — message flows/associations don't carry tokens.
+        if (el.businessObject?.$type !== "bpmn:SequenceFlow") continue;
         const srcId = el.source?.id ?? el.businessObject?.sourceRef?.id;
         const tgtId = el.target?.id ?? el.businessObject?.targetRef?.id;
         if (!srcId || !tgtId) continue;

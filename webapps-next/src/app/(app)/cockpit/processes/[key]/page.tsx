@@ -10,6 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { engineGet } from "@/lib/camunda/engine";
 
+import { ProcessAiDialog } from "../_components/process-ai-dialog";
+
 type ActivityStatistic = {
   id: string; // activityId
   instances: number;
@@ -210,19 +212,22 @@ export default async function ProcessDefinitionPage({
                   {heatMode === "history" ? "all-time" : "currently running"} activity instances.
                 </CardDescription>
               </div>
-              <div className="bg-muted text-muted-foreground inline-flex items-center rounded-md p-0.5 text-xs">
-                <Link
-                  href={`/cockpit/processes/${encodeURIComponent(def.key)}`}
-                  className={`rounded-sm px-2.5 py-1 ${heatMode === "runtime" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"}`}
-                >
-                  Runtime
-                </Link>
-                <Link
-                  href={`/cockpit/processes/${encodeURIComponent(def.key)}?heat=history`}
-                  className={`rounded-sm px-2.5 py-1 ${heatMode === "history" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"}`}
-                >
-                  All-time
-                </Link>
+              <div className="flex items-center gap-2">
+                <ProcessAiDialog processKey={def.key} processName={def.name ?? def.key} />
+                <div className="bg-muted text-muted-foreground inline-flex items-center rounded-md p-0.5 text-xs">
+                  <Link
+                    href={`/cockpit/processes/${encodeURIComponent(def.key)}`}
+                    className={`rounded-sm px-2.5 py-1 ${heatMode === "runtime" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"}`}
+                  >
+                    Runtime
+                  </Link>
+                  <Link
+                    href={`/cockpit/processes/${encodeURIComponent(def.key)}?heat=history`}
+                    className={`rounded-sm px-2.5 py-1 ${heatMode === "history" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"}`}
+                  >
+                    All-time
+                  </Link>
+                </div>
               </div>
             </div>
           </CardHeader>
@@ -232,39 +237,26 @@ export default async function ProcessDefinitionPage({
         </Card>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Resource</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <code className="text-xs">{def.resource}</code>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Deployment</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <code className="text-xs">{def.deploymentId}</code>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Tenant</CardTitle>
-          </CardHeader>
-          <CardContent>{def.tenantId ?? "—"}</CardContent>
-        </Card>
-      </div>
+      {/* Compact metadata strip — one divided row instead of three tall cards. */}
+      <Card className="py-0">
+        <CardContent className="grid grid-cols-1 divide-y p-0 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          <MetaCell label="Resource" value={def.resource} mono />
+          <MetaCell label="Deployment" value={def.deploymentId} mono />
+          <MetaCell label="Tenant" value={def.tenantId ?? "—"} />
+        </CardContent>
+      </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Running instances</CardTitle>
-          <CardDescription>Latest 50, newest first.</CardDescription>
+      <Card className="gap-0 py-0">
+        <CardHeader className="flex flex-row items-baseline justify-between gap-2 border-b py-3">
+          <div className="flex items-baseline gap-2">
+            <CardTitle className="text-sm font-medium">Running instances</CardTitle>
+            <span className="text-muted-foreground text-xs tabular-nums">{instances.length}</span>
+          </div>
+          <CardDescription className="text-xs">Latest 50, newest first</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {instances.length === 0 ? (
-            <div className="text-muted-foreground p-6 text-sm">No running instances.</div>
+            <div className="text-muted-foreground px-4 py-3 text-xs">No running instances.</div>
           ) : (
             <Table>
               <TableHeader>
@@ -294,6 +286,18 @@ export default async function ProcessDefinitionPage({
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** One compact label/value cell in the metadata strip. */
+function MetaCell({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="min-w-0 px-4 py-3">
+      <div className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">{label}</div>
+      <div className={`mt-0.5 truncate text-xs ${mono ? "font-mono" : ""}`} title={value}>
+        {value}
+      </div>
     </div>
   );
 }
