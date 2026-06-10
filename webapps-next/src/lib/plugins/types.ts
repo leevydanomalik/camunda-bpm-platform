@@ -16,6 +16,15 @@ export type PluginExtensionPoint = {
   label?: string;
 };
 
+/** Commercial metadata for paid plugins (marketplace display + gating). */
+export type PluginCommercial = {
+  paid: boolean;
+  /** Human-readable price, e.g. "$29 / month". */
+  price: string;
+  /** Display tier, e.g. "Pro". */
+  tier?: string;
+};
+
 export type PluginManifest = {
   apiVersion: "1";
   id: string;
@@ -23,6 +32,16 @@ export type PluginManifest = {
   displayName: string;
   description?: string;
   app: "cockpit" | "tasklist" | "admin" | "welcome" | "shared";
+  /** Ships with the app; always installed, cannot be uninstalled. */
+  builtIn?: boolean;
+  /** Initial install state for managed (non-built-in) plugins. Default true. */
+  defaultEnabled?: boolean;
+  commercial?: PluginCommercial;
+  /**
+   * Non-component integration points the plugin provides (e.g. the diagram
+   * heatmap painter). Purely declarative — consumers gate on install state.
+   */
+  capabilities?: string[];
   client: {
     extensionPoints: PluginExtensionPoint[];
   };

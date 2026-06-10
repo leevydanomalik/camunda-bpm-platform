@@ -4,8 +4,9 @@
   "id": "sample-dashboard-widget",
   "version": "0.1.0",
   "displayName": "Sample Dashboard Widget",
-  "description": "Reference plugin demonstrating the v0 plugin contract — a Recent Deployments card on the Cockpit dashboard.",
+  "description": "Reference plugin demonstrating the v0 plugin contract \u2014 a Recent Deployments card on the Cockpit dashboard.",
   "app": "cockpit",
+  "builtIn": true,
   "client": {
     "extensionPoints": [
       {

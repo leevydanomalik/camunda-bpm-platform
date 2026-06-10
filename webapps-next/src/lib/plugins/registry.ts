@@ -3,8 +3,8 @@
 // this file from `plugins/*/plugin.json` so dynamic plugin paths bundle
 // correctly under Next.js + Turbopack).
 
-import sampleManifest from "@/../plugins/sample-dashboard-widget/plugin.json";
 import * as sampleClient from "@/../plugins/sample-dashboard-widget/client";
+import sampleManifest from "@/../plugins/sample-dashboard-widget/plugin.json";
 
 import type { PluginManifest, RegisteredPlugin } from "./types";
 

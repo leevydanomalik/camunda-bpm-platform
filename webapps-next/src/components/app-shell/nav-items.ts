@@ -6,8 +6,10 @@ import {
   Inbox,
   Layers,
   LayoutDashboard,
+  PackageCheck,
   PackageOpen,
   ShieldCheck,
+  Store,
   TableProperties,
   Users,
   Workflow,
@@ -51,5 +53,12 @@ export const navSections: NavSection[] = [
   {
     label: "Tasklist",
     items: [{ title: "Inbox", url: "/tasklist", icon: Inbox }],
+  },
+  {
+    label: "Plugin",
+    items: [
+      { title: "Marketplace", url: "/plugins/marketplace", icon: Store },
+      { title: "Installed", url: "/plugins/installed", icon: PackageCheck },
+    ],
   },
 ];
