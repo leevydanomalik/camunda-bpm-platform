@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/"
+             xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/"
+             xmlns:camunda="http://camunda.org/schema/1.0/dmn"
+             id="PerformanceBonusDefinitions" name="Performance Bonus"
+             namespace="http://deepflow/dmn/performance"
+             exporter="DeepFlow" exporterVersion="1.0">
+  <decision id="performanceBonus" name="Performance Rating &amp; Bonus" camunda:historyTimeToLive="P180D">
+    <decisionTable id="dt_perf" hitPolicy="FIRST">
+      <input id="pf_in_score" label="Appraisal score">
+        <inputExpression id="pf_ie_score" typeRef="number">
+          <text>score</text>
+        </inputExpression>
+      </input>
+      <output id="pf_out_rating" label="Rating" name="rating" typeRef="string" />
+      <output id="pf_out_bonus" label="Bonus %" name="bonusPct" typeRef="number" />
+      <output id="pf_out_action" label="Action" name="action" typeRef="string" />
+      <rule id="pf_r1">
+        <inputEntry id="pf_r1i1"><text>&gt;= 90</text></inputEntry>
+        <outputEntry id="pf_r1o1"><text>"Outstanding"</text></outputEntry>
+        <outputEntry id="pf_r1o2"><text>20</text></outputEntry>
+        <outputEntry id="pf_r1o3"><text>"Fast-track for promotion review"</text></outputEntry>
+      </rule>
+      <rule id="pf_r2">
+        <inputEntry id="pf_r2i1"><text>&gt;= 75</text></inputEntry>
+        <outputEntry id="pf_r2o1"><text>"Exceeds"</text></outputEntry>
+        <outputEntry id="pf_r2o2"><text>12</text></outputEntry>
+        <outputEntry id="pf_r2o3"><text>"Eligible for merit increase"</text></outputEntry>
+      </rule>
+      <rule id="pf_r3">
+        <inputEntry id="pf_r3i1"><text>&gt;= 60</text></inputEntry>
+        <outputEntry id="pf_r3o1"><text>"Meets"</text></outputEntry>
+        <outputEntry id="pf_r3o2"><text>6</text></outputEntry>
+        <outputEntry id="pf_r3o3"><text>"Standard cycle"</text></outputEntry>
+      </rule>
+      <rule id="pf_r4">
+        <inputEntry id="pf_r4i1"><text>&gt;= 40</text></inputEntry>
+        <outputEntry id="pf_r4o1"><text>"Needs Improvement"</text></outputEntry>
+        <outputEntry id="pf_r4o2"><text>0</text></outputEntry>
+        <outputEntry id="pf_r4o3"><text>"Place on a performance improvement plan"</text></outputEntry>
+      </rule>
+      <rule id="pf_r5">
+        <inputEntry id="pf_r5i1"><text>&lt; 40</text></inputEntry>
+        <outputEntry id="pf_r5o1"><text>"Unsatisfactory"</text></outputEntry>
+        <outputEntry id="pf_r5o2"><text>0</text></outputEntry>
+        <outputEntry id="pf_r5o3"><text>"Escalate to HR for review"</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="drd_perf">
+      <dmndi:DMNShape id="shape_performanceBonus" dmnElementRef="performanceBonus">
+        <dc:Bounds height="80" width="180" x="160" y="100" />
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  id="Definitions_OrderFulfillment"
+                  targetNamespace="http://camunda.org/examples"
+                  exporter="camunda-next-webapps sample"
+                  exporterVersion="1.0">
+  <bpmn:process id="order-fulfillment" name="Order fulfillment" isExecutable="true" camunda:historyTimeToLive="P30D">
+    <bpmn:documentation>
+      Multi-step order fulfillment with validation gateway, parallel pick-and-pack,
+      and a loop-back on rejected orders. Designed to exercise the BPMN viewer's
+      gateways, parallel branches, and back-edges.
+    </bpmn:documentation>
+
+    <bpmn:startEvent id="StartEvent_OrderPlaced" name="Order placed">
+      <bpmn:outgoing>Flow_Start</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:userTask id="Task_Review" name="Review order"
+                   camunda:assignee="demo"
+                   camunda:candidateGroups="sales"
+                   camunda:formKey="embedded:deployment:review-order.html">
+      <bpmn:documentation>Sales rep reviews the incoming order against stock and credit terms.</bpmn:documentation>
+      <bpmn:incoming>Flow_Start</bpmn:incoming>
+      <bpmn:incoming>Flow_LoopBack</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToValid</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:exclusiveGateway id="Gateway_Valid" name="Order valid?" default="Flow_Approved">
+      <bpmn:incoming>Flow_ToValid</bpmn:incoming>
+      <bpmn:outgoing>Flow_Approved</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Rejected</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:userTask id="Task_RequestFix" name="Request order fix"
+                   camunda:assignee="demo"
+                   camunda:candidateGroups="sales">
+      <bpmn:incoming>Flow_Rejected</bpmn:incoming>
+      <bpmn:outgoing>Flow_LoopBack</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:serviceTask id="Task_ChargePayment" name="Charge payment"
+                      camunda:type="external" camunda:topic="charge-payment">
+      <bpmn:incoming>Flow_Approved</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToFork</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:parallelGateway id="Gateway_Fork" name="Fork fulfillment">
+      <bpmn:incoming>Flow_ToFork</bpmn:incoming>
+      <bpmn:outgoing>Flow_Pack</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Notify</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <bpmn:userTask id="Task_PackItems" name="Pack items"
+                   camunda:assignee="demo"
+                   camunda:candidateGroups="warehouse">
+      <bpmn:incoming>Flow_Pack</bpmn:incoming>
+      <bpmn:outgoing>Flow_FromPack</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:serviceTask id="Task_NotifyWarehouse" name="Notify carrier"
+                      camunda:type="external" camunda:topic="notify-carrier">
+      <bpmn:incoming>Flow_Notify</bpmn:incoming>
+      <bpmn:outgoing>Flow_FromNotify</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:parallelGateway id="Gateway_Join" name="Ready to ship">
+      <bpmn:incoming>Flow_FromPack</bpmn:incoming>
+      <bpmn:incoming>Flow_FromNotify</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToShip</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <bpmn:userTask id="Task_ShipOrder" name="Hand off to carrier"
+                   camunda:assignee="demo"
+                   camunda:candidateGroups="warehouse">
+      <bpmn:incoming>Flow_ToShip</bpmn:incoming>
+      <bpmn:outgoing>Flow_End</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:endEvent id="EndEvent_Done" name="Order shipped">
+      <bpmn:incoming>Flow_End</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_Start" sourceRef="StartEvent_OrderPlaced" targetRef="Task_Review" />
+    <bpmn:sequenceFlow id="Flow_ToValid" sourceRef="Task_Review" targetRef="Gateway_Valid" />
+    <bpmn:sequenceFlow id="Flow_Approved" name="approved" sourceRef="Gateway_Valid" targetRef="Task_ChargePayment" />
+    <bpmn:sequenceFlow id="Flow_Rejected" name="needs fix" sourceRef="Gateway_Valid" targetRef="Task_RequestFix">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression"
+                                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${execution.hasVariable("decision") and decision == "reject"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_LoopBack" sourceRef="Task_RequestFix" targetRef="Task_Review" />
+    <bpmn:sequenceFlow id="Flow_ToFork" sourceRef="Task_ChargePayment" targetRef="Gateway_Fork" />
+    <bpmn:sequenceFlow id="Flow_Pack" sourceRef="Gateway_Fork" targetRef="Task_PackItems" />
+    <bpmn:sequenceFlow id="Flow_Notify" sourceRef="Gateway_Fork" targetRef="Task_NotifyWarehouse" />
+    <bpmn:sequenceFlow id="Flow_FromPack" sourceRef="Task_PackItems" targetRef="Gateway_Join" />
+    <bpmn:sequenceFlow id="Flow_FromNotify" sourceRef="Task_NotifyWarehouse" targetRef="Gateway_Join" />
+    <bpmn:sequenceFlow id="Flow_ToShip" sourceRef="Gateway_Join" targetRef="Task_ShipOrder" />
+    <bpmn:sequenceFlow id="Flow_End" sourceRef="Task_ShipOrder" targetRef="EndEvent_Done" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="order-fulfillment">
+
+      <bpmndi:BPMNShape id="StartEvent_OrderPlaced_di" bpmnElement="StartEvent_OrderPlaced">
+        <dc:Bounds x="152" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="138" y="225" width="64" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_Review_di" bpmnElement="Task_Review">
+        <dc:Bounds x="240" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Gateway_Valid_di" bpmnElement="Gateway_Valid" isMarkerVisible="true">
+        <dc:Bounds x="395" y="175" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="386" y="145" width="68" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_RequestFix_di" bpmnElement="Task_RequestFix">
+        <dc:Bounds x="370" y="290" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_ChargePayment_di" bpmnElement="Task_ChargePayment">
+        <dc:Bounds x="500" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Gateway_Fork_di" bpmnElement="Gateway_Fork">
+        <dc:Bounds x="655" y="175" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="641" y="145" width="78" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_PackItems_di" bpmnElement="Task_PackItems">
+        <dc:Bounds x="760" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_NotifyWarehouse_di" bpmnElement="Task_NotifyWarehouse">
+        <dc:Bounds x="760" y="240" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Gateway_Join_di" bpmnElement="Gateway_Join">
+        <dc:Bounds x="915" y="175" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="905" y="145" width="70" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_ShipOrder_di" bpmnElement="Task_ShipOrder">
+        <dc:Bounds x="1020" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="EndEvent_Done_di" bpmnElement="EndEvent_Done">
+        <dc:Bounds x="1172" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1156" y="225" width="68" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Flow_Start_di" bpmnElement="Flow_Start">
+        <di:waypoint x="188" y="200" />
+        <di:waypoint x="240" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToValid_di" bpmnElement="Flow_ToValid">
+        <di:waypoint x="340" y="200" />
+        <di:waypoint x="395" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Approved_di" bpmnElement="Flow_Approved">
+        <di:waypoint x="445" y="200" />
+        <di:waypoint x="500" y="200" />
+        <bpmndi:BPMNLabel><dc:Bounds x="450" y="182" width="46" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Rejected_di" bpmnElement="Flow_Rejected">
+        <di:waypoint x="420" y="225" />
+        <di:waypoint x="420" y="290" />
+        <bpmndi:BPMNLabel><dc:Bounds x="425" y="240" width="50" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_LoopBack_di" bpmnElement="Flow_LoopBack">
+        <di:waypoint x="370" y="330" />
+        <di:waypoint x="290" y="330" />
+        <di:waypoint x="290" y="240" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToFork_di" bpmnElement="Flow_ToFork">
+        <di:waypoint x="600" y="200" />
+        <di:waypoint x="655" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Pack_di" bpmnElement="Flow_Pack">
+        <di:waypoint x="680" y="175" />
+        <di:waypoint x="680" y="120" />
+        <di:waypoint x="760" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Notify_di" bpmnElement="Flow_Notify">
+        <di:waypoint x="680" y="225" />
+        <di:waypoint x="680" y="280" />
+        <di:waypoint x="760" y="280" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_FromPack_di" bpmnElement="Flow_FromPack">
+        <di:waypoint x="860" y="120" />
+        <di:waypoint x="940" y="120" />
+        <di:waypoint x="940" y="175" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_FromNotify_di" bpmnElement="Flow_FromNotify">
+        <di:waypoint x="860" y="280" />
+        <di:waypoint x="940" y="280" />
+        <di:waypoint x="940" y="225" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToShip_di" bpmnElement="Flow_ToShip">
+        <di:waypoint x="965" y="200" />
+        <di:waypoint x="1020" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_End_di" bpmnElement="Flow_End">
+        <di:waypoint x="1120" y="200" />
+        <di:waypoint x="1172" y="200" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

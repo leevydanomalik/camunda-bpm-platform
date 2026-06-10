@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/"
+             xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/"
+             xmlns:camunda="http://camunda.org/schema/1.0/dmn"
+             id="LeaveApprovalDefinitions" name="Leave Approval"
+             namespace="http://deepflow/dmn/leave"
+             exporter="DeepFlow" exporterVersion="1.0">
+  <decision id="leaveApproval" name="Leave Approval Routing" camunda:historyTimeToLive="P180D">
+    <decisionTable id="dt_leaveApproval" hitPolicy="FIRST">
+      <input id="in_short" label="Over balance?">
+        <inputExpression id="ie_short" typeRef="boolean">
+          <text>requestedDays &gt; leaveBalance</text>
+        </inputExpression>
+      </input>
+      <input id="in_tenure" label="Tenure (months)">
+        <inputExpression id="ie_tenure" typeRef="number">
+          <text>tenureMonths</text>
+        </inputExpression>
+      </input>
+      <input id="in_days" label="Requested days">
+        <inputExpression id="ie_days" typeRef="number">
+          <text>requestedDays</text>
+        </inputExpression>
+      </input>
+      <output id="out_routing" label="Routing" name="routing" typeRef="string" />
+      <output id="out_reason" label="Reason" name="reason" typeRef="string" />
+      <rule id="r_reject">
+        <inputEntry id="r1i1"><text>true</text></inputEntry>
+        <inputEntry id="r1i2"><text>-</text></inputEntry>
+        <inputEntry id="r1i3"><text>-</text></inputEntry>
+        <outputEntry id="r1o1"><text>"reject"</text></outputEntry>
+        <outputEntry id="r1o2"><text>"Requested days exceed remaining balance"</text></outputEntry>
+      </rule>
+      <rule id="r_probation">
+        <inputEntry id="r2i1"><text>false</text></inputEntry>
+        <inputEntry id="r2i2"><text>&lt; 3</text></inputEntry>
+        <inputEntry id="r2i3"><text>-</text></inputEntry>
+        <outputEntry id="r2o1"><text>"hr-review"</text></outputEntry>
+        <outputEntry id="r2o2"><text>"Employee still in probation (under 3 months)"</text></outputEntry>
+      </rule>
+      <rule id="r_auto">
+        <inputEntry id="r3i1"><text>false</text></inputEntry>
+        <inputEntry id="r3i2"><text>-</text></inputEntry>
+        <inputEntry id="r3i3"><text>&lt;= 2</text></inputEntry>
+        <outputEntry id="r3o1"><text>"auto-approve"</text></outputEntry>
+        <outputEntry id="r3o2"><text>"Short leave auto-approved"</text></outputEntry>
+      </rule>
+      <rule id="r_manager">
+        <inputEntry id="r4i1"><text>false</text></inputEntry>
+        <inputEntry id="r4i2"><text>-</text></inputEntry>
+        <inputEntry id="r4i3"><text>&lt;= 5</text></inputEntry>
+        <outputEntry id="r4o1"><text>"manager-approval"</text></outputEntry>
+        <outputEntry id="r4o2"><text>"Needs line-manager approval"</text></outputEntry>
+      </rule>
+      <rule id="r_hr">
+        <inputEntry id="r5i1"><text>false</text></inputEntry>
+        <inputEntry id="r5i2"><text>-</text></inputEntry>
+        <inputEntry id="r5i3"><text>-</text></inputEntry>
+        <outputEntry id="r5o1"><text>"hr-review"</text></outputEntry>
+        <outputEntry id="r5o2"><text>"Extended leave needs HR review"</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="drd_leave">
+      <dmndi:DMNShape id="shape_leaveApproval" dmnElementRef="leaveApproval">
+        <dc:Bounds height="80" width="180" x="160" y="100" />
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

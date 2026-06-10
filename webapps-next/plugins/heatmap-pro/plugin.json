@@ -1,0 +1,18 @@
+{
+  "apiVersion": "1",
+  "id": "heatmap-pro",
+  "version": "1.0.0",
+  "displayName": "Heatmap Pro",
+  "description": "Live thermal overlay for BPMN diagrams — token load and incidents painted straight onto the process, with structural flow propagation and corridor glow between hot spots.",
+  "app": "cockpit",
+  "defaultEnabled": false,
+  "commercial": {
+    "paid": true,
+    "price": "$29 / month",
+    "tier": "Pro"
+  },
+  "capabilities": ["cockpit.diagram.heatmap"],
+  "client": {
+    "extensionPoints": []
+  }
+}

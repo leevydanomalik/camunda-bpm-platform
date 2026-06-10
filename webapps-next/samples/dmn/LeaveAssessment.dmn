@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/"
+             xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/"
+             xmlns:di="http://www.omg.org/spec/DMN/20180521/DI/"
+             xmlns:camunda="http://camunda.org/schema/1.0/dmn"
+             id="LeaveAssessmentDefinitions" name="Leave Assessment"
+             namespace="http://deepflow/dmn/leaveAssessment"
+             exporter="DeepFlow" exporterVersion="1.0">
+
+  <!-- Top decision: depends on the risk-tier sub-decision -->
+  <decision id="leaveAssessment" name="Leave Assessment" camunda:historyTimeToLive="P180D">
+    <informationRequirement id="ir_riskTier">
+      <requiredDecision href="#leaveRiskTier" />
+    </informationRequirement>
+    <decisionTable id="dt_assessment" hitPolicy="FIRST">
+      <input id="la_in_tier" label="Risk tier">
+        <inputExpression id="la_ie_tier" typeRef="string">
+          <text>riskTier</text>
+        </inputExpression>
+        <inputValues id="la_tiervals"><text>"low","medium","high"</text></inputValues>
+      </input>
+      <output id="la_out_route" label="Routing" name="routing" typeRef="string" />
+      <output id="la_out_sla" label="SLA (days)" name="slaDays" typeRef="number" />
+      <rule id="la_r1">
+        <inputEntry id="la_r1i1"><text>"low"</text></inputEntry>
+        <outputEntry id="la_r1o1"><text>"auto-approve"</text></outputEntry>
+        <outputEntry id="la_r1o2"><text>1</text></outputEntry>
+      </rule>
+      <rule id="la_r2">
+        <inputEntry id="la_r2i1"><text>"medium"</text></inputEntry>
+        <outputEntry id="la_r2o1"><text>"manager-approval"</text></outputEntry>
+        <outputEntry id="la_r2o2"><text>3</text></outputEntry>
+      </rule>
+      <rule id="la_r3">
+        <inputEntry id="la_r3i1"><text>"high"</text></inputEntry>
+        <outputEntry id="la_r3o1"><text>"hr-review"</text></outputEntry>
+        <outputEntry id="la_r3o2"><text>5</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+
+  <!-- Sub decision: classifies the request into a risk tier -->
+  <decision id="leaveRiskTier" name="Leave Risk Tier" camunda:historyTimeToLive="P180D">
+    <decisionTable id="dt_riskTier" hitPolicy="FIRST">
+      <input id="rt_in_tenure" label="Tenure (months)">
+        <inputExpression id="rt_ie_tenure" typeRef="number">
+          <text>tenureMonths</text>
+        </inputExpression>
+      </input>
+      <input id="rt_in_days" label="Requested days">
+        <inputExpression id="rt_ie_days" typeRef="number">
+          <text>requestedDays</text>
+        </inputExpression>
+      </input>
+      <output id="rt_out_tier" label="Risk tier" name="riskTier" typeRef="string" />
+      <rule id="rt_r1">
+        <inputEntry id="rt_r1i1"><text>&lt; 3</text></inputEntry>
+        <inputEntry id="rt_r1i2"><text>-</text></inputEntry>
+        <outputEntry id="rt_r1o1"><text>"high"</text></outputEntry>
+      </rule>
+      <rule id="rt_r2">
+        <inputEntry id="rt_r2i1"><text>-</text></inputEntry>
+        <inputEntry id="rt_r2i2"><text>&gt; 5</text></inputEntry>
+        <outputEntry id="rt_r2o1"><text>"high"</text></outputEntry>
+      </rule>
+      <rule id="rt_r3">
+        <inputEntry id="rt_r3i1"><text>-</text></inputEntry>
+        <inputEntry id="rt_r3i2"><text>&gt; 2</text></inputEntry>
+        <outputEntry id="rt_r3o1"><text>"medium"</text></outputEntry>
+      </rule>
+      <rule id="rt_r4">
+        <inputEntry id="rt_r4i1"><text>-</text></inputEntry>
+        <inputEntry id="rt_r4i2"><text>-</text></inputEntry>
+        <outputEntry id="rt_r4o1"><text>"low"</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="drd_leaveAssessment">
+      <dmndi:DMNShape id="sh_assessment" dmnElementRef="leaveAssessment">
+        <dc:Bounds height="80" width="180" x="280" y="80" />
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="sh_riskTier" dmnElementRef="leaveRiskTier">
+        <dc:Bounds height="80" width="180" x="280" y="240" />
+      </dmndi:DMNShape>
+      <dmndi:DMNEdge id="edge_ir" dmnElementRef="ir_riskTier">
+        <di:waypoint x="370" y="240" />
+        <di:waypoint x="370" y="160" />
+      </dmndi:DMNEdge>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>
