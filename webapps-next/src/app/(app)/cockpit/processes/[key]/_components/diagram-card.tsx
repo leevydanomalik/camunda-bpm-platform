@@ -4,13 +4,13 @@ import { useState } from "react";
 
 import Link from "next/link";
 
-import { Flame } from "lucide-react";
+import { Flame, Play, Square } from "lucide-react";
 
 import { type ActivityBadge, BpmnViewer } from "@/components/bpmn-viewer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePluginInstalled } from "@/lib/plugins/install-state";
-import { HEATMAP_PLUGIN_ID } from "@/lib/plugins/manifests";
+import { HEATMAP_PLUGIN_ID, TOKEN_SIMULATION_PLUGIN_ID } from "@/lib/plugins/manifests";
 
 import { ProcessAiDialog } from "../../_components/process-ai-dialog";
 
@@ -33,7 +33,9 @@ export function DiagramCard({
   processName: string;
 }) {
   const heatmapPlugin = usePluginInstalled(HEATMAP_PLUGIN_ID, false);
+  const tokenSimPlugin = usePluginInstalled(TOKEN_SIMULATION_PLUGIN_ID, false);
   const [heatVisible, setHeatVisible] = useState(true);
+  const [simOn, setSimOn] = useState(false);
   const heat = heatmapPlugin ? heatmap : undefined;
 
   return (
@@ -50,6 +52,23 @@ export function DiagramCard({
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
+            {tokenSimPlugin ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 text-xs"
+                onClick={() => setSimOn((v) => !v)}
+                aria-pressed={simOn}
+              >
+                {simOn ? (
+                  <Square className="size-3.5 text-emerald-500" />
+                ) : (
+                  <Play className="text-muted-foreground size-3.5" />
+                )}
+                {simOn ? "Stop simulation" : "Simulate"}
+              </Button>
+            ) : null}
             {heat ? (
               <Button
                 type="button"
@@ -82,7 +101,16 @@ export function DiagramCard({
         </div>
       </CardHeader>
       <CardContent>
-        <BpmnViewer xml={xml} height={460} badges={badges} heatmap={heat} heatmapVisible={heatVisible} />
+        {/* Heat hides while simulating — tokens deserve a clean canvas. */}
+        <BpmnViewer
+          xml={xml}
+          height={460}
+          badges={badges}
+          heatmap={heat}
+          heatmapVisible={heatVisible && !simOn}
+          tokenSimulation
+          tokenSimulationOn={simOn}
+        />
       </CardContent>
     </Card>
   );

@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from "react";
 
 import { Expand, Maximize, Minus, Plus, Shrink } from "lucide-react";
 
-// Heatmap rendering is a paid plugin (Heatmap Pro). v0 plugin contract links
-// statically — the painter is bundled, but it only ever runs when the plugin
-// is installed (runtime install state). Not installed → no overlay, no UI.
+// Heatmap rendering and token simulation are paid plugins. v0 plugin contract
+// links statically — the code is bundled, but it only ever runs when the
+// plugin is installed (runtime install state). Not installed → no UI at all.
 import { paintHeatmap } from "@/../plugins/heatmap-pro/client";
+import { loadTokenSimulationModule } from "@/../plugins/token-simulation/client";
 import { usePluginInstalled } from "@/lib/plugins/install-state";
-import { HEATMAP_PLUGIN_ID } from "@/lib/plugins/manifests";
+import { HEATMAP_PLUGIN_ID, TOKEN_SIMULATION_PLUGIN_ID } from "@/lib/plugins/manifests";
 
 // ── Minimal ambient types for what we use from bpmn-js ──
 type BpmnCanvas = {
@@ -72,6 +73,17 @@ export type BpmnViewerProps = {
   heatmap?: Record<string, number>;
   /** External heatmap visibility toggle (defaults to true when `heatmap` is set). */
   heatmapVisible?: boolean;
+  /**
+   * Offer interactive token simulation (play tokens through the diagram).
+   * Requires the Token Simulation plugin — without it, nothing renders.
+   * Keep off for thumbnails.
+   */
+  tokenSimulation?: boolean;
+  /**
+   * External simulation-mode toggle (the library's own floating toggle box is
+   * hidden — the host page owns the button, like the heatmap toggle).
+   */
+  tokenSimulationOn?: boolean;
   /** Show the zoom/fit/fullscreen cluster. Turn off for small thumbnails. */
   controls?: boolean;
 };
@@ -90,10 +102,19 @@ const CONTROL_BTN =
 // the diagram with no JS re-run.
 //   white   → --bpmn-surface   #22242a → --bpmn-ink
 const SURFACE_FILLS = new Set(["white", "rgb(255,255,255)", "#fff", "#ffffff"]);
-const INK_FILLS = new Set(["rgb(34,36,42)", "#22242a"]);
+// #22242a is plain bpmn-js; #212121 is what bpmn-js-token-simulation re-renders
+// labels/glyphs with while simulation mode is on.
+const INK_FILLS = new Set(["rgb(34,36,42)", "#22242a", "rgb(33,33,33)", "#212121"]);
+
+// The diagram svg is the one holding g.viewport — plugins (token simulation)
+// inject dozens of icon svgs into the same host, and a bare
+// querySelector("svg") happily returns one of those instead.
+function diagramSvg(host: HTMLElement | null): SVGSVGElement | null {
+  return (host?.querySelector("svg g.viewport")?.closest("svg") as SVGSVGElement | null) ?? null;
+}
 
 function applyDiagramTheme(host: HTMLElement | null) {
-  const svg = host?.querySelector("svg");
+  const svg = diagramSvg(host);
   if (!svg) return;
   for (const el of svg.querySelectorAll<SVGElement>("[style*='fill']")) {
     const fill = (el.style.fill || "").toLowerCase().replace(/\s+/g, "");
@@ -109,20 +130,26 @@ export function BpmnViewer({
   badges,
   heatmap,
   heatmapVisible = true,
+  tokenSimulation = false,
+  tokenSimulationOn = false,
   controls = true,
 }: BpmnViewerProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const bpmnHostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<BpmnJsViewer | null>(null);
+  const themeObserverRef = useRef<MutationObserver | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isReady, setIsReady] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // The heatmap is a paid plugin — not installed means it doesn't exist here.
+  // Heatmap and token simulation are paid plugins — not installed means the
+  // feature doesn't exist here.
   const heatmapPluginInstalled = usePluginInstalled(HEATMAP_PLUGIN_ID, false);
   const heatActive = Boolean(heatmap) && heatmapPluginInstalled && heatmapVisible;
+  const tokenSimInstalled = usePluginInstalled(TOKEN_SIMULATION_PLUGIN_ID, false);
+  const tokenSimActive = tokenSimulation && tokenSimInstalled;
 
   // ── Diagram controls (zoom / fit / fullscreen) ──
   const getCanvas = () => {
@@ -172,6 +199,17 @@ export function BpmnViewer({
     }
   };
 
+  // Sync the externally-controlled simulation mode with the plugin's
+  // ToggleMode service (its own floating toggle UI is hidden via CSS below).
+  useEffect(() => {
+    if (!isReady || !tokenSimActive) return;
+    try {
+      viewerRef.current?.get<{ toggleMode: (active: boolean) => void }>("toggleMode").toggleMode(tokenSimulationOn);
+    } catch {
+      /* module not present */
+    }
+  }, [isReady, tokenSimActive, tokenSimulationOn]);
+
   // Track fullscreen state and refit when it changes.
   useEffect(() => {
     const onChange = () => {
@@ -199,10 +237,24 @@ export function BpmnViewer({
           viewerRef.current = null;
         }
         const mod = await import("bpmn-js/lib/NavigatedViewer");
+
+        // Token Simulation plugin: spread its bpmn-js module into the viewer.
+        // Load failures degrade to a plain diagram instead of erroring out.
+        const additionalModules: unknown[] = [];
+        if (tokenSimActive) {
+          try {
+            additionalModules.push(await loadTokenSimulationModule());
+          } catch {
+            /* simulation unavailable — render plain */
+          }
+        }
         if (cancelled || !bpmnHostRef.current) return;
 
-        const Viewer = (mod.default ?? mod) as unknown as new (opts: { container: HTMLElement }) => BpmnJsViewer;
-        const viewer = new Viewer({ container: host });
+        const Viewer = (mod.default ?? mod) as unknown as new (opts: {
+          container: HTMLElement;
+          additionalModules?: unknown[];
+        }) => BpmnJsViewer;
+        const viewer = new Viewer({ container: host, additionalModules });
         viewerRef.current = viewer;
 
         await viewer.importXML(xml);
@@ -213,6 +265,39 @@ export function BpmnViewer({
 
         // Remap bpmn-js's baked-in white/#22242a fills to theme vars.
         applyDiagramTheme(host);
+
+        // Plugins re-render shapes at runtime (token simulation rebuilds every
+        // gfx node on mode toggle), restoring the hard-coded fills. Watch the
+        // diagram svg and remap again whenever a literal white/ink fill shows
+        // up. Remapped fills are var(...) values, so the observer settles
+        // after one pass instead of looping.
+        const svg = diagramSvg(host);
+        if (svg) {
+          let scheduled = 0;
+          const needsRemap = (mutations: MutationRecord[]): boolean => {
+            for (const m of mutations) {
+              if (m.type === "attributes") {
+                const fill = ((m.target as SVGElement).style?.fill || "").toLowerCase().replace(/\s+/g, "");
+                if (SURFACE_FILLS.has(fill) || INK_FILLS.has(fill)) return true;
+              } else {
+                for (const n of m.addedNodes) {
+                  if (n instanceof SVGElement && (n.matches("[style*='fill']") || n.querySelector("[style*='fill']")))
+                    return true;
+                }
+              }
+            }
+            return false;
+          };
+          const observer = new MutationObserver((mutations) => {
+            if (scheduled || !needsRemap(mutations)) return;
+            scheduled = requestAnimationFrame(() => {
+              scheduled = 0;
+              applyDiagramTheme(host);
+            });
+          });
+          observer.observe(svg, { attributes: true, attributeFilter: ["style"], subtree: true, childList: true });
+          themeObserverRef.current = observer;
+        }
 
         if (activityIds && activityIds.length > 0) {
           for (const id of activityIds) {
@@ -259,12 +344,14 @@ export function BpmnViewer({
 
     return () => {
       cancelled = true;
+      themeObserverRef.current?.disconnect();
+      themeObserverRef.current = null;
       if (viewerRef.current) {
         viewerRef.current.destroy();
         viewerRef.current = null;
       }
     };
-  }, [xml, activityIds, badges]);
+  }, [xml, activityIds, badges, tokenSimActive]);
 
   // ── 2. Heatmap canvas overlay (cargotrain-style two-pass compositor) ──
   useEffect(() => {
@@ -305,7 +392,7 @@ export function BpmnViewer({
 
       if (!heatmap || !heatActive) return;
 
-      const svg = bpmnHost.querySelector("svg") as SVGSVGElement | null;
+      const svg = diagramSvg(bpmnHost);
       if (!svg) return;
 
       // Delegate the actual painting to the Heatmap Pro plugin.
@@ -410,6 +497,14 @@ export function BpmnViewer({
           height: 100vh !important;
           border-radius: 0;
           background: var(--background);
+        }
+        /* The simulation toggle lives in the page header, not on the canvas.
+           The floating palette (pause/reset/log) and speed control go too —
+           simulation stays clean: just the diagram and its tokens. */
+        [data-bpmn-root] .bts-toggle-mode,
+        [data-bpmn-root] .bts-palette,
+        [data-bpmn-root] .bts-set-animation-speed {
+          display: none;
         }
         .djs-element.${HIGHLIGHT_MARKER} .djs-visual > :nth-child(1) {
           stroke: var(--primary) !important;
