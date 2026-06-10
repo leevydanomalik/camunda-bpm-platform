@@ -232,8 +232,11 @@ export function BpmnViewer({
             el.className = `cam-badge cam-badge-${b.tone ?? "default"}`;
             el.textContent = b.count >= 1000 ? `${Math.floor(b.count / 1000)}k` : String(b.count);
             try {
+              // Overlay coords anchor the badge's top-left: {bottom: 10} puts it
+              // at height-10, so the 20px badge straddles the bottom edge
+              // (likewise {right: 10} for the top-right corner).
               overlays.add(b.elementId, BADGE_OVERLAY_TYPE, {
-                position: b.position === "top-right" ? { top: -8, right: -8 } : { bottom: -8, left: -8 },
+                position: b.position === "top-right" ? { top: -10, right: 10 } : { bottom: 10, left: -10 },
                 html: el,
               });
             } catch {
